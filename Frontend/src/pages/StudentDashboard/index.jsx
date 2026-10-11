@@ -13,6 +13,7 @@ import Chatbot from './components/Chatbot';
 import RoutesViewer from './components/RoutesViewer';
 import StudentProfile from './components/StudentProfile';
 import RouteGenerator from './components/RouteGenerator';
+import SelfDiagnosisModal from './components/SelfDiagnosisModal';
 
 import LiveSupportChat from '../../shared/LiveSupportChat';
 
@@ -22,6 +23,7 @@ const StudentDashboard = () => {
   const [previousTab, setPreviousTab] = useState('explorar');
   const [routeViewMode, setRouteViewMode] = useState('teoria');
   const [showChat, setShowChat] = useState(false);
+  const [showSelfDiagnosis, setShowSelfDiagnosis] = useState(false);
   const [userData, setUserData] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
 
@@ -158,6 +160,38 @@ const StudentDashboard = () => {
     }
   };
 
+  const handleAssessmentComplete = (data) => {
+    if (!data) return;
+    const gained = data.xpGained || 0;
+    setUserData(prev => {
+      if (!prev) return prev;
+      const updatedXp = data.newTotalXp !== undefined ? data.newTotalXp : (prev.xp + gained);
+      const updatedLevel = data.newLevel !== undefined ? data.newLevel : prev.level;
+      const updatedUser = { ...prev, xp: updatedXp, level: updatedLevel };
+
+      const storageUser = localStorage.getItem('user') || sessionStorage.getItem('user');
+      if (storageUser) {
+        try {
+          const parsed = JSON.parse(storageUser);
+          parsed.xp = updatedXp;
+          parsed.level = updatedLevel;
+          const storageType = localStorage.getItem('user') ? localStorage : sessionStorage;
+          storageType.setItem('user', JSON.stringify(parsed));
+        } catch (_) {}
+      }
+
+      return updatedUser;
+    });
+  };
+
+  const handleRouteGenerated = async () => {
+    try {
+      const data = await getRoutes();
+      setAvailableRoutes(data);
+      setActiveTab('mis-rutas');
+    } catch (_) {}
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case 'inicio':
@@ -167,6 +201,7 @@ const StudentDashboard = () => {
           <RouteExplorer
             routes={availableRoutes}
             loading={loadingRoutes}
+            onOpenSelfDiagnosis={() => setShowSelfDiagnosis(true)}
             onSelectRoute={(route) => {
               setSelectedRoute(route);
               setPreviousTab('explorar');
@@ -204,6 +239,7 @@ const StudentDashboard = () => {
             setContextoEvaluacion={setContextoEvaluacion}
             onSendToAI={handleSendCodeToAI}
             onOpenChat={handleOpenChat}
+            onAssessmentComplete={handleAssessmentComplete}
             isAlreadyEnrolled={enrolledRouteIds.includes(selectedRoute?.id)}
           />
         );
@@ -228,7 +264,14 @@ const StudentDashboard = () => {
   return (
     <div className="h-screen w-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 flex overflow-hidden transition-colors duration-300">
 
-      <StudentSidebar activeTab={activeTab} setActiveTab={setActiveTab} userData={userData} toggleTheme={toggleTheme} onLogout={handleLogout} />
+      <StudentSidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        userData={userData} 
+        toggleTheme={toggleTheme} 
+        onLogout={handleLogout}
+        onOpenSelfDiagnosis={() => setShowSelfDiagnosis(true)}
+      />
 
       <div className="flex-1 flex flex-col h-full min-w-0 relative overflow-hidden">
         <StudentHeader userData={userData} setActiveTab={setActiveTab} />
@@ -236,6 +279,12 @@ const StudentDashboard = () => {
           {renderContent()}
         </main>
       </div>
+
+      <SelfDiagnosisModal
+        isOpen={showSelfDiagnosis}
+        onClose={() => setShowSelfDiagnosis(false)}
+        onRouteGenerated={handleRouteGenerated}
+      />
 
       <Chatbot
         showChat={showChat}

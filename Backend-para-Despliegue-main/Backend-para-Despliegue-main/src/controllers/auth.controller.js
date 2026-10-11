@@ -84,10 +84,12 @@ const handleFailedAttempt = async (user, req, res, reasonMessage) => {
       args: [unlockToken, user.id]
     });
 
-    // Enviar alerta por correo al Administrador
-    const adminEmail = process.env.FIRST_ADMIN_EMAIL || 'jimmito636@gmail.com';
-    const unlockUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/auth/unlock-account/${unlockToken}`;
-    await sendAdminLockoutAlertEmail({ adminEmail, user, ipAddress, deviceInfo, unlockUrl });
+    // Enviar alerta por correo al Administrador si está configurado
+    const adminEmail = process.env.FIRST_ADMIN_EMAIL;
+    if (adminEmail) {
+      const unlockUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/auth/unlock-account/${unlockToken}`;
+      await sendAdminLockoutAlertEmail({ adminEmail, user, ipAddress, deviceInfo, unlockUrl });
+    }
 
     return res.status(403).json({
       error: 'Tu cuenta ha sido bloqueada permanentemente tras múltiples intentos fallidos. Se ha notificado al Administrador para su desbloqueo.',
@@ -141,9 +143,6 @@ export const register = async (req, res) => {
     }
 
     const user = await registerUser({ name, email, password });
-
-    const verifyUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/auth/verify/${user.verificationToken}`;
-    console.log(`[DEV] Enlace de verificación para ${user.email}: ${verifyUrl}`);
 
     try {
       await sendVerificationEmail(user.email, user.verificationToken);
@@ -252,7 +251,6 @@ export const login = async (req, res) => {
     if (!otp) {
       const generatedOtp = await generateOTP(email);
       await sendOTPEmail(email, user.name, generatedOtp);
-      console.log(`[DEV] OTP para ${email}: ${generatedOtp}`); // Visible en consola durante desarrollo
       return res.status(206).json({ message: 'OTP requerido. Se ha enviado un código a su correo.' });
     }
 

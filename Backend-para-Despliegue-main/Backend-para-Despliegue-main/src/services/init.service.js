@@ -11,8 +11,14 @@ export const initializeFirstAdmin = async () => {
     await turso.execute(`INSERT OR IGNORE INTO Role (name, description) VALUES ('ADMIN', 'Administrador global')`);
     await turso.execute(`INSERT OR IGNORE INTO Role (name, description) VALUES ('STUDENT', 'Estudiante EPN')`);
 
-    const adminEmail    = process.env.FIRST_ADMIN_EMAIL    || 'admin@epn.edu.ec';
-    const adminPassword = process.env.FIRST_ADMIN_PASSWORD || 'SuperAdmin2026*';
+    const adminEmail    = process.env.FIRST_ADMIN_EMAIL;
+    const adminPassword = process.env.FIRST_ADMIN_PASSWORD;
+
+    if (!adminEmail || !adminPassword) {
+      console.warn('⚠️ [Seguridad] FIRST_ADMIN_EMAIL o FIRST_ADMIN_PASSWORD no están configurados en el entorno. Se omite la creación/actualización del Super Admin por defecto.');
+      return;
+    }
+
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
     // Insertar admin si no existe

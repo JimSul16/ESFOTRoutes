@@ -16,6 +16,8 @@ import routeRoutes    from './routes/route.routes.js';
 import uploadRoutes   from './routes/upload.routes.js';
 import chatRoutes     from './routes/chat.routes.js';
 import executeRoutes  from './routes/execute.routes.js';
+import graphRoutes    from './routes/graph.routes.js';
+import { aiLimiter }  from './middlewares/rateLimiter.middleware.js';
 
 const app = express();
 
@@ -45,8 +47,9 @@ app.use("/api/admin",     adminRoutes);
 app.use("/api/resources", resourceRoutes);
 app.use("/api/routes",    routeRoutes);
 app.use("/api/upload",    uploadRoutes);
-app.use("/api/chat",      chatRoutes);
+app.use("/api/chat",      aiLimiter, chatRoutes);
 app.use("/api/execute",   executeRoutes);
+app.use("/api/graph",     graphRoutes);
 
 app.use(express.static('public'));
 

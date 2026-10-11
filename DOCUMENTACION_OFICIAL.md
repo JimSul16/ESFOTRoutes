@@ -1,6 +1,6 @@
 # Documentación Oficial del Proyecto: Plataforma de Aprendizaje ESFOT
 
-Esta documentación abarca la arquitectura completa del proyecto, dividida en **Backend** y **Frontend**, detallando tecnologías, endpoints, variables de entorno, seguridad, escalabilidad y una lista de tareas pendientes (To-Do) para el equipo de desarrollo.
+Esta documentación abarca la arquitectura completa del proyecto, dividida en **Backend** y **Frontend**, detallando tecnologías, endpoints, modelo de datos en grafo, variables de entorno, seguridad, pruebas automatizadas y resolución de tareas de integración.
 
 ---
 
@@ -9,104 +9,116 @@ Esta documentación abarca la arquitectura completa del proyecto, dividida en **
 El Backend está construido bajo una arquitectura de controladores y servicios (API RESTful), diseñado para integrarse con bases de datos relacionales, grafos de conocimiento e Inteligencia Artificial.
 
 ### Tecnologías y Arquitectura
-- **Framework:** Node.js con Express.js.
+- **Framework:** Node.js (ES Modules) con Express.js.
 - **Base de Datos Relacional:** SQLite en la nube utilizando **Turso** (`@libsql/client`).
-- **Grafo de Conocimiento:** **Neo4j** (AuraDB) para mapear usuarios, rutas y progreso (`neo4j-driver`).
-- **Inteligencia Artificial:** **Google Gemini API** (`@google/generative-ai`) para generación de rutas, evaluaciones y tutoría.
+- **Motor de Grafos y Conocimiento Curricular:** **Neo4j AuraDB** para modelado curricular avanzado, dependencias de prerrequisitos, autodiagnóstico y GraphRAG (`neo4j-driver`).
+- **Algoritmo de Rutas Adaptativas:** `graphlib` implementando orden topológico ponderado (Algoritmo de Kahn con cola de prioridad pedagógica) y desarme automático de ciclos.
+- **Inteligencia Artificial:** **Google Gemini API** (`@google/generative-ai`, modelo `gemini-3.5-flash`) desacoplado en la capa de servicios (`chat.service.js`).
 - **Manejo de Archivos:** Multer para subidas locales y Cloudinary para almacenamiento en la nube de imágenes y PDFs.
-- **Seguridad y Autenticación:** JWT (JSON Web Tokens), Bcrypt/Bcryptjs (Hash de contraseñas), Helmet (Cabeceras HTTP de seguridad), express-rate-limit (Prevención DoS).
+- **Seguridad y Autenticación:** JWT (JSON Web Tokens), Bcrypt, Helmet (Cabeceras HTTP de seguridad), express-rate-limit (`aiLimiter` y limitador global).
+- **Pruebas Automatizadas (TDD):** Jest con soporte para ES Modules verificando aciclicidad, prerrequisitos estrictos y grafos desconectados.
+- **Auditoría de Seguridad y Pentesting:** Strix (`usestrix/strix v1.7.0`).
 
 ### Variables de Entorno (`.env`)
-El archivo `.env` centraliza la configuración de conexiones externas:
+El archivo `.env` centraliza la configuración de conexiones externas (plantilla segura en `.env.example`):
 - `PORT`: Puerto de ejecución (ej. 3000).
-- `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`: Credenciales para conexión remota a la base de datos Turso. (Para desarrollo local se puede usar `file:./dev.db`).
-- `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD`: Conexión al clúster de Neo4j AuraDB.
+- `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`: Conexión remota a la base de datos Turso SQLite.
+- `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` / `NEO4J_DATABASE`: Conexión al clúster de Neo4j AuraDB.
 - `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET`: Credenciales de Cloudinary.
-- `JWT_SECRET` / `JWT_EXPIRES_IN`: Clave secreta para firmar tokens y su expiración.
+- `JWT_SECRET` / `JWT_EXPIRES_IN`: Clave secreta para firmar tokens y duración de sesión.
 - `SMTP_SERVICE`, `SMTP_USER`, `SMTP_PASS`: Credenciales de Nodemailer para recuperación de cuentas.
-- `FRONTEND_URL`: URL del cliente web para configurar CORS.
-- `GEMINI_API_KEY`: Clave de acceso a Google AI Studio (Gemini 3.5 Flash).
-- `FIRST_ADMIN_EMAIL` / `FIRST_ADMIN_PASSWORD`: Credenciales para el volcado o seeder del primer administrador.
+- `FRONTEND_URL`: URL del cliente web para configuración de CORS.
+- `GEMINI_API_KEY`: Clave de acceso a Google AI Studio (`gemini-3.5-flash`).
+- `FIRST_ADMIN_EMAIL` / `FIRST_ADMIN_PASSWORD`: Credenciales obligatorias para crear el primer administrador si no existe.
+
+---
 
 ### Endpoints Principales (API REST)
-**Autenticación (`/api/auth`):**
+
+#### 1. Autenticación (`/api/auth`)
 - `POST /register`: Registro de estudiantes.
 - `POST /login`: Inicio de sesión y emisión de JWT.
-- `POST /forgot-password` / `PATCH /reset-password/:token`: Flujo de recuperación.
+- `POST /forgot-password` / `PATCH /reset-password/:token`: Flujo de recuperación de contraseñas.
 - `GET /profile`: Obtener datos del perfil autenticado.
 
-**Rutas y Aprendizaje (`/api/routes`):**
-- `POST /generate`: Genera una ruta personalizada basada en un texto o un PDF subido, consumiendo la API de Gemini. Guarda la ruta en Turso y en Neo4j (`syncRouteToGraph`).
+#### 2. Grafo de Conocimiento y Rutas Adaptativas (`/api/graph`)
+- `GET /subjects`: Lista las materias troncales en Neo4j con conteo de módulos y temas.
+- `GET /subjects/:id/topics`: Obtiene módulos, temas y dependencias de prerrequisitos (`HARD`/`SOFT`) de una materia.
+- `POST /self-diagnosis`: Guarda el autodiagnóstico del estudiante (escala 1 a 5) creando relaciones `(u:User)-[:SELF_REPORTED {level, date}]->(t:Topic)`.
+- `POST /generate-personalized-route`: Ejecuta el algoritmo topológico con `graphlib`, genera una ruta adaptativa personalizada con módulos de refuerzo para temas con dificultades (`STRUGGLES_WITH`), persiste en Turso (`LearningRoute` y `Module`) y sincroniza con Neo4j. En caso de fallo de red en Neo4j, ejecuta rollback compensatorio en Turso.
+- `GET /recommendations`: Retorna recomendaciones de materias cruzadas interdisciplinarias según el progreso del estudiante.
+- `GET /topic/:topicId/context`: Devuelve el subgrafo local de un tema para GraphRAG.
+
+#### 3. Rutas y Aprendizaje Estándar (`/api/routes`)
+- `GET /`: Listar catálogo de rutas disponibles.
+- `POST /generate`: Genera una ruta basada en texto o PDF subido consumiendo Gemini.
 - `POST /:id/enroll`: Inscribe al estudiante en la ruta.
-- `POST /complete-module`: Registra que un usuario aprobó un módulo. Aumenta XP en Turso, y crea la relación `(u)-[:COMPLETED]->(m)` en Neo4j.
+- `POST /complete-module`: Registra aprobación de módulo, otorga XP al usuario y enlaza `(u)-[:COMPLETED]->(m)` en Neo4j.
 
-**IA y Evaluaciones (`/api/chat`):**
-- `POST /assessment`: Recibe el ID del módulo. Primero busca en Turso (`ModuleAssessment`) si la evaluación ya existe para devolverla al instante. Si no existe, llama a Gemini para crearla, la guarda en caché (Turso) y la devuelve.
-- `POST /send`: Maneja la tutoría por chat con IA.
+#### 4. IA y Evaluaciones (`/api/chat`) *(Protegido por `aiLimiter`)*
+- `POST /send`: Procesa mensajes de tutoría inyectando contexto del subgrafo curricular (GraphRAG). Si el estudiante manifiesta bloqueo conceptual, registra automáticamente `STRUGGLES_WITH` en el grafo.
+- `POST /assessment`: Genera o recupera desde caché de Turso los cuestionarios y retos dinámicos del módulo.
 
-### Pruebas (Testing)
-Actualmente, el `package.json` incluye `jest` en sus dependencias, pero **no existe un directorio de pruebas (tests) automatizadas**. 
-- **Pruebas sugeridas para el Backend:** Implementar pruebas unitarias para los controladores y pruebas de integración usando `Supertest` para los endpoints críticos (`/login`, `/complete-module`, `/generate`).
+---
+
+### Saneamiento de Deuda Técnica (P0)
+1. **Eliminación de dependencias muertas:** Se eliminaron `bcryptjs` (redundante de `bcrypt`) y `docx` (~2MB sin uso) de `package.json`.
+2. **Eliminación de archivo roto:** Se borró `src/api/authService.js` en el backend (código residual que intentaba importar un módulo inexistente del frontend).
+3. **Desacoplamiento de Servicios:** La interacción directa con la API de Google Gemini en `chat.controller.js` fue extraída a `src/services/chat.service.js`.
 
 ---
 
 ## 2. Documentación del Frontend
 
-El Frontend es una Single Page Application (SPA) moderna, rápida y responsiva, enfocada en la experiencia del estudiante.
+El Frontend es una Single Page Application (SPA) responsiva y reactiva construida en React 19 y Tailwind CSS.
 
-### Tecnologías y Arquitectura
+### Tecnologías y Componentes
 - **Framework:** React 19 con Vite.
-- **Estilos:** Tailwind CSS v4 (con PostCSS) y diseño responsivo.
-- **Manejo de Estado:** Zustand (Estado global ligero).
-- **Formularios y Validación:** React Hook Form junto con Zod.
-- **Enrutamiento:** React Router v7.
-- **Integraciones Visuales:** Monaco Editor (para el entorno de código IDE JDoodle), React Markdown (para renderizar respuestas de la IA), React Toastify (Notificaciones push).
-
-### Variables de Entorno (`.env`)
-- `VITE_API_URL`: Apunta a la URL del backend (ej. `http://localhost:3000/api`).
-- `VITE_PUSHER_KEY` / `VITE_PUSHER_CLUSTER`: (Si se usa Pusher para webhooks/sockets).
-
-### Manejo de Estado, Arreglos y Funciones
-- **Componentes Clave:** 
-  - `RouteDetails.jsx`: Gestiona la visualización de la ruta. Muestra el botón "Iniciar Reto Final" de forma condicional (solo en el último módulo).
-  - `AIAssessmentForm.jsx`: Componente encargado de renderizar y calificar la evaluación.
-- **Arreglos Importantes:**
-  - `CODING_KEYWORDS`: `['javascript', 'js', 'react', 'node', 'python', 'html', 'css', 'web', 'programación']`. Este arreglo permite que el Frontend identifique si el módulo actual requiere programación. Si coincide, despliega automáticamente el `CodeWorkspace` (Monaco Editor).
-- **Flujo de Completado:** Cuando el estudiante obtiene >= 70%, `AIAssessmentForm` hace un POST a `/complete-module`. 
+- **Estilos:** Tailwind CSS v4.
+- **Navegación:** React Router.
+- **Cliente API:** Módulos centralizados en `src/api/` (`graph.api.js`, `route.api.js`, `resource.api.js`, `admin.api.js`).
+- **Componentes Principales:**
+  - `SelfDiagnosisModal.jsx`: Modal interactivo de autodiagnóstico con escala del 1 al 5 por tema, selector de materia troncal y generación de ruta adaptativa (HU-013).
+  - `RouteExplorer.jsx`: Explorador de rutas con Hero Banner que invita al autodiagnóstico curricular.
+  - `RouteDetails.jsx`: Renderizado de la ruta con badges de prerrequisitos y alertas de *"⚡ Módulo de Refuerzo Sugerido"*.
+  - `AIAssessmentForm.jsx`: Cuestionarios dinámicos con propagación de eventos para actualización reactiva de XP.
+  - `StudentHeader.jsx` & `StudentSidebar.jsx`: Gamificación con nivel y barra de XP con refresco en tiempo real.
 
 ---
 
-## 3. Seguridad y Escalabilidad
+## 3. Pruebas Automatizadas (QA & TDD)
 
-### Seguridad Implementada
-- **Backend:** 
-  - Protección de endpoints con Middleware JWT y verificación de roles (`verifyToken`, `checkRoles`).
-  - Límite de carga estricto con **Multer (5MB máximo)** para PDFs y validación de Mimetype (mitigación básica de DoS y malware).
-  - El driver local de SQLite (Turso) utiliza `args` parametrizados, previniendo inyección SQL.
-- **Frontend:** Uso de Rutas Protegidas en React Router.
+Se configuró una suite de pruebas unitarias en `tests/graphAlgorithm.test.js` ejecutables mediante:
+```bash
+npm test
+```
 
-### Escalabilidad (Grafos y Caché)
-- **Caché de IA:** Las evaluaciones de Gemini ahora se almacenan en SQLite (`ModuleAssessment`). Esto escala masivamente la plataforma, ya que 1,000 estudiantes accediendo al mismo módulo no harán 1,000 peticiones a Google AI, sino a la base local, ahorrando cuota.
-- **Grafo Neo4j:** La arquitectura está lista para Big Data. La inserción pasiva `(u:User)-[:COMPLETED]->(m:Module)` permitirá en el futuro implementar un motor de recomendaciones (Filtro Colaborativo) muy avanzado que SQL tradicional no podría manejar con eficiencia.
+### Casos de Prueba Verificados (5/5 Pasados ✅):
+1. **Caso 1 (DAG Lineal):** Verifica que un grafo acíclico estándar $A \to B \to C$ se ordene estrictamente en orden topológico.
+2. **Caso 2 (Prerrequisito HARD estricto):** Demuestra que si el estudiante tiene nivel 1 en $A$ y nivel 5 en $B$ (donde $B$ requiere $A$ como `HARD`), $A$ se programa obligatoriamente antes que $B$ y se marca como refuerzo sugerido.
+3. **Caso 3 (Desarme de Ciclos):** Ante una dependencia circular $A \to B \to C \to A$, el algoritmo desactiva la relación `SOFT`, logrando la aciclicidad sin bucles infinitos.
+4. **Caso 4 (Grafo Desconectado):** Verifica que múltiples componentes curriculares independientes se unifiquen y ordenen sin omitir temas.
+5. **Caso 5 (Urgencia pedagógica por STRUGGLES_WITH):** Los temas marcados con dificultades reciben $+20$ puntos de prioridad y se agrupan en el módulo de refuerzo.
 
 ---
 
-## 4. Tareas Pendientes (To-Do para el Frontend Developer)
+## 4. Estado de Tareas (Resolución To-Do del Frontend)
 
-> [!TIP]
-> **Para el desarrollador Frontend:** El backend ya expone los datos correctamente. Por favor enfócate en solucionar los siguientes puntos de experiencia de usuario (UX) e integración:
+> [!NOTE]
+> Todas las tareas pendientes del equipo frontend han sido implementadas y resueltas exitosamente:
 
-1. **Re-renderizado en Vivo (Reactividad de XP):**
-   - *Problema:* Al aprobar un módulo, el componente `AIAssessmentForm.jsx` muestra el Toast de éxito, pero la barra superior del Navbar (donde está el Nivel y la XP) no se actualiza a menos que se recargue la página.
-   - *Solución:* Pasar una prop `onAssessmentComplete={refreshUserData}` desde el componente padre (ej. Dashboard) hasta `AIAssessmentForm`, o mejor aún, actualizar el store de **Zustand** con la respuesta del backend (`newXp`, `newLevel`).
+1. **Re-renderizado en Vivo (Reactividad de XP) — ✅ RESUELTO:**
+   - `RouteDetails.jsx` ahora recibe la prop `onAssessmentComplete={handleAssessmentComplete}` y la propaga a `AIAssessmentForm.jsx`. Al aprobar el examen, el estado global del usuario se actualiza inmediatamente sin recargar la página, refrescando la barra de XP en `StudentHeader.jsx`.
 
-2. **Manejo de Errores Globales (Fallbacks):**
-   - *Problema:* Si el servidor de la API falla, la pantalla se queda cargando o lanza un error por consola.
-   - *Solución:* Implementar un *ErrorBoundary* global y estados de `isError` en las consultas de Zustand, mostrando un mensaje amigable al estudiante (ej. "Nuestros servidores están en mantenimiento").
+2. **Restricción de Avance Visual y Badges — ✅ RESUELTO:**
+   - `RouteDetails.jsx` identifica módulos de refuerzo y temas con prerrequisitos pendientes, desplegando badges ámbar (*"⚡ Módulo de Refuerzo Sugerido"*) y azules de prerrequisitos curriculares.
 
-3. **Restricción de Avance Visual (Opcional):**
-   - *Problema:* Actualmente el usuario puede saltarse teóricamente del módulo 1 al módulo 3. 
-   - *Solución:* En `RouteDetails.jsx`, comparar el índice del módulo renderizado con el `progress` o historial del estudiante, y deshabilitar (estilo `opacity-50 pointer-events-none`) los módulos futuros si el módulo anterior no está marcado como aprobado en la DB.
+3. **Sanitización de URLs y Markdown — ✅ RESUELTO:**
+   - La función `sanitizeUrl` previene la apertura de enlaces maliciosos o protocolos no autorizados como `javascript:`.
 
-4. **Sanitización de Markdown:**
-   - Asegurarse de utilizar plugins como `rehype-sanitize` dentro del `<ReactMarkdown>` para prevenir inyecciones XSS en el caso de que la IA o un atacante logre insertar scripts en el texto.
+---
+
+---
+<div align="center">
+  <i>Documento Oficial Actualizado - Plataforma de Aprendizaje ESFOT (EPN)</i>
+</div>

@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
+*.env
+
+# Local Databases & Logs
+*.db
+*.sqlite
+dev.db
+logs/
+*.log
+
+# Build outputs
+dist/
+build/
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+# Internal Planning & Audit Documents
+ANALISIS_COMPLETO*
+PLAN-GRAFO-CONOCIMIENTO*
+REPORTE-SEGURIDAD-STRIX*

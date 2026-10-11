@@ -1,4 +1,4 @@
-const StudentSidebar = ({ activeTab, setActiveTab, userData, toggleTheme, onLogout }) => {
+const StudentSidebar = ({ activeTab, setActiveTab, userData, toggleTheme, onLogout, onOpenSelfDiagnosis }) => {
   return (
     <aside className="w-64 min-w-[16rem] h-full bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 hidden md:flex flex-col justify-between p-6 z-10 flex-shrink-0">
       <div className="space-y-8">
@@ -16,6 +16,10 @@ const StudentSidebar = ({ activeTab, setActiveTab, userData, toggleTheme, onLogo
           <button onClick={() => setActiveTab('inicio')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all ${activeTab === 'inicio' ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>Centro de Mando</button>
           <button onClick={() => setActiveTab('explorar')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all ${activeTab === 'explorar' ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>Explorar Rutas</button>
           <button onClick={() => setActiveTab('mis-rutas')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all ${activeTab === 'mis-rutas' ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>Mis Rutas</button>
+          <button onClick={onOpenSelfDiagnosis} className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-sm transition-all text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40 hover:bg-violet-100 dark:hover:bg-violet-900/40 border border-violet-200 dark:border-violet-800/50">
+            <span className="flex items-center gap-2">🧭 Autodiagnóstico</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-600 text-white font-bold">Grafo</span>
+          </button>
         </nav>
       </div>
 

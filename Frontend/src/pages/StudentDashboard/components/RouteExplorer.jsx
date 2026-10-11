@@ -1,9 +1,10 @@
-const RouteExplorer = ({ routes, loading, onSelectRoute }) => {
+const RouteExplorer = ({ routes, loading, onSelectRoute, onOpenSelfDiagnosis }) => {
   const getDifficultyColor = (difficulty) => {
     switch (difficulty) {
       case 'BEGINNER': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
       case 'INTERMEDIATE': return 'bg-sky-500/10 text-sky-500 border-sky-500/20';
       case 'ADVANCED': return 'bg-violet-500/10 text-violet-500 border-violet-500/20';
+      case 'ADAPTIVE': return 'bg-purple-500/10 text-purple-400 border-purple-500/30';
       default: return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
     }
   };
@@ -13,16 +14,50 @@ const RouteExplorer = ({ routes, loading, onSelectRoute }) => {
       case 'BEGINNER': return 'Principiante';
       case 'INTERMEDIATE': return 'Intermedio';
       case 'ADVANCED': return 'Avanzado';
+      case 'ADAPTIVE': return '⚡ Adaptativa (Grafo)';
       default: return difficulty;
     }
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-2">Explorar Rutas</h2>
-        <p className="text-slate-500 dark:text-slate-400">Descubre nuevos caminos de aprendizaje estructurados por tus profesores.</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight mb-2">Explorar Rutas</h2>
+          <p className="text-slate-500 dark:text-slate-400">Descubre caminos de aprendizaje estructurados y adaptados con Inteligencia Artificial.</p>
+        </div>
+
+        {onOpenSelfDiagnosis && (
+          <button
+            onClick={onOpenSelfDiagnosis}
+            className="px-5 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-sm shadow-lg shadow-violet-600/20 flex items-center gap-2.5 transition-all hover:scale-105 self-start md:self-auto border border-violet-500/40"
+          >
+            <span>🧭</span>
+            <span>Autodiagnóstico por Temas (HU-013)</span>
+          </button>
+        )}
       </div>
+
+      {/* Hero Banner del Grafo */}
+      {onOpenSelfDiagnosis && (
+        <div className="bg-gradient-to-r from-violet-900/40 via-slate-900 to-indigo-950/40 border border-violet-500/30 rounded-3xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
+          <div className="space-y-2 text-center md:text-left">
+            <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-violet-500/20 text-violet-400 border border-violet-500/30">
+              Nuevo: Motor Curricular Neo4j AuraDB
+            </span>
+            <h3 className="text-xl md:text-2xl font-black text-white">¿Tienes conocimientos previos o vacíos conceptuales?</h3>
+            <p className="text-sm text-slate-300 max-w-2xl">
+              Realiza una autoevaluación rápida en <strong>Redes de Computadoras</strong> o <strong>Desarrollo Web</strong>. Nuestro algoritmo de orden topológico analizará tus fortalezas y prerrequisitos para generarte una ruta 100% personalizada.
+            </p>
+          </div>
+          <button
+            onClick={onOpenSelfDiagnosis}
+            className="whitespace-nowrap px-6 py-3 rounded-2xl bg-white text-slate-950 hover:bg-slate-100 font-black text-sm shadow-lg transition-transform hover:scale-105"
+          >
+            Comenzar Diagnóstico →
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-20">

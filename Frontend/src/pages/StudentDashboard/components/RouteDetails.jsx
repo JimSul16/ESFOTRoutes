@@ -12,7 +12,7 @@ const sanitizeUrl = (url) => {
 
 const CODING_KEYWORDS = ['javascript', 'js', 'react', 'node', 'python', 'html', 'css', 'web', 'programación'];
 
-const RouteDetail = ({ route, viewMode, setViewMode, onBack, contextoEvaluacion, setContextoEvaluacion, onSendToAI, onOpenChat, isAlreadyEnrolled }) => {
+const RouteDetail = ({ route, viewMode, setViewMode, onBack, contextoEvaluacion, setContextoEvaluacion, onSendToAI, onOpenChat, isAlreadyEnrolled, onAssessmentComplete }) => {
   const [expandedModule, setExpandedModule] = useState(null);
   const [assessmentData, setAssessmentData] = useState(null);
   const [assessingModuleId, setAssessingModuleId] = useState(null);
@@ -332,6 +332,7 @@ const RouteDetail = ({ route, viewMode, setViewMode, onBack, contextoEvaluacion,
                   moduleId={assessingModuleId}
                   assessmentType={assessmentType}
                   onRetake={closeAssessment} 
+                  onAssessmentComplete={onAssessmentComplete}
                 />
               </div>
             ) : (
@@ -342,6 +343,7 @@ const RouteDetail = ({ route, viewMode, setViewMode, onBack, contextoEvaluacion,
               ) : (
                 route.modules.map((mod, index) => {
                   const isExpanded = expandedModule === mod.id;
+                  const isReinforcement = mod.title?.includes('Refuerzo') || mod.title?.includes('Nivelación');
                   
                   return (
                     <div key={mod.id} className="bg-[#1e2333] border border-gray-800 rounded-xl overflow-hidden transition-all duration-300">
@@ -350,10 +352,21 @@ const RouteDetail = ({ route, viewMode, setViewMode, onBack, contextoEvaluacion,
                         className="w-full flex items-center justify-between p-5 hover:bg-[#252b3e] transition-colors text-left"
                       >
                         <div className="flex items-center gap-4">
-                          <div className="w-8 h-8 rounded-full bg-violet-600/20 text-violet-400 flex items-center justify-center font-bold text-sm border border-violet-500/30">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm border ${
+                            isReinforcement 
+                              ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' 
+                              : 'bg-violet-600/20 text-violet-400 border-violet-500/30'
+                          }`}>
                             {index + 1}
                           </div>
-                          <h3 className="text-lg font-bold text-white">{mod.title}</h3>
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                            <h3 className="text-lg font-bold text-white">{mod.title}</h3>
+                            {isReinforcement && (
+                              <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 self-start">
+                                ⚡ Módulo de Refuerzo Sugerido
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <svg 
                           className={`w-5 h-5 text-gray-400 transform transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} 
