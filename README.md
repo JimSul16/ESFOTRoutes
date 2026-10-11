@@ -9,7 +9,6 @@
     <img src="https://img.shields.io/badge/Neo4j-018bff?style=for-the-badge&logo=neo4j&logoColor=white" alt="Neo4j" />
     <img src="https://img.shields.io/badge/Turso-000000?style=for-the-badge&logo=sqlite&logoColor=white" alt="Turso" />
     <img src="https://img.shields.io/badge/Gemini_AI-8E75B2?style=for-the-badge&logo=google&logoColor=white" alt="Gemini" />
-    <img src="https://img.shields.io/badge/Strix_Pentest-FF4B4B?style=for-the-badge&logo=shield&logoColor=white" alt="Strix" />
     <img src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind" />
   </p>
 </div>
@@ -28,7 +27,7 @@ La **Plataforma ESFOT** transforma la educación técnica universitaria convirti
 - 📐 **Algoritmo Topológico DAG (`graphlib`) (HU-014):** Secuenciación pedagógica óptima, prevención de ciclos y persistencia dual segura (Turso SQLite + Neo4j con rollback compensatorio).
 - 🤖 **GraphRAG en Tutoría IA (HU-015):** Inyección de subgrafos curriculares locales en los prompts del Chatbot para evitar alucinaciones y detectar vacíos conceptuales en vivo.
 - ⚡ **Gamificación y Reactividad:** Actualización instantánea de XP y nivel en la barra superior al aprobar evaluaciones en `AIAssessmentForm`.
-- 🛡️ **Seguridad Blindada y Pentesting:** Cero credenciales hardcodeadas, supresión de OTPs en logs, limitadores de tasa dedicados (`aiLimiter`), y auditoría con [**Strix Agent v1.7.0**](./REPORTE-SEGURIDAD-STRIX.md).
+- 🛡️ **Seguridad Blindada:** Cero credenciales hardcodeadas, supresión de OTPs en logs, limitadores de tasa dedicados (`aiLimiter`) y cabeceras de seguridad con Helmet.
 
 ---
 
@@ -147,17 +146,6 @@ cd Frontend
 npm install
 npm run dev
 ```
-
----
-
-## 🛡️ Auditoría de Seguridad y Pentesting (Strix)
-Para ejecutar la auditoría de penetración con Strix una vez iniciado Docker Desktop:
-```powershell
-$env:STRIX_LLM = "gemini/gemini-3.5-flash"
-$env:GEMINI_API_KEY = (Get-Content ".\Backend-para-Despliegue-main\Backend-para-Despliegue-main\.env" | Select-String "GEMINI_API_KEY=").ToString().Split("=")[1].Trim(' "''')
-strix --target ./Backend-para-Despliegue-main/Backend-para-Despliegue-main -m standard -n
-```
-Para ver el informe completo de vulnerabilidades mitigadas, consulta [`REPORTE-SEGURIDAD-STRIX.md`](./REPORTE-SEGURIDAD-STRIX.md).
 
 ---
 
