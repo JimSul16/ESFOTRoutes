@@ -160,9 +160,19 @@ export const generateChatResponse = async ({ userId, moduleId, topicId, message,
     parts: [{ text: msg.content }]
   }));
 
-  const chat = model.startChat({ history });
-  const result = await chat.sendMessage(message);
-  const aiResponseText = result.response.text();
+  let aiResponseText = '';
+  try {
+    const chat = model.startChat({ history });
+    const result = await chat.sendMessage(message);
+    aiResponseText = result.response.text();
+  } catch (llmErr) {
+    console.warn(`⚠️ Error en llamada a Gemini Chat (${llmErr.message}). Utilizando respuesta pedagógica de contingencia...`);
+    aiResponseText = `Hola ${user?.name || 'estudiante'}, como tutor curricular de la ESFOT estoy aquí para orientarte.
+
+${topicContext ? `Sobre el tema **${topicContext.name}**: ${topicContext.description}\nPrerrequisitos clave: ${topicContext.prerequisites?.map(p => p.name).join(', ') || 'Concepto base'}.` : 'He recibido tu consulta sobre el material del módulo actual.'}
+
+Te sugiero repasar los recursos didácticos del módulo y verificar cada paso con las guías de laboratorio. Si tienes dudas en un bloque de código o ejercicio puntual, compártelo detallando el paso donde se produce el inconveniente.`;
+  }
 
   // 7. Guardar respuesta del Tutor IA
   await turso.execute({
@@ -253,16 +263,308 @@ export const generateModuleAssessmentService = async (moduleId, type = 'completa
     Devuelve ÚNICAMENTE JSON puro. EJEMPLO: ${fewShotExample}
   `;
 
-  const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash', systemInstruction: systemPrompt });
-  const chat = model.startChat();
-  const result = await chat.sendMessage('Genera la evaluación ahora. Responde SOLO con el JSON puro.');
-  let aiResponseText = result.response.text().replace(/```json/gi, '').replace(/```/gi, '').trim();
+  let finalJson = null;
 
-  const finalJson = JSON.parse(aiResponseText);
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash', systemInstruction: systemPrompt });
+    const chat = model.startChat();
+    const result = await chat.sendMessage('Genera la evaluación ahora. Responde SOLO con el JSON puro.');
+    let aiResponseText = result.response.text().replace(/```json/gi, '').replace(/```/gi, '').trim();
+    finalJson = JSON.parse(aiResponseText);
+  } catch (err) {
+    console.warn(`⚠️ Error al generar evaluación con Gemini (${err.message}). Activando generador curricular de contingencia...`);
+    finalJson = generateCurricularFallbackAssessment(moduleData, resourcesResult.rows, type);
+  }
+
   await turso.execute({
     sql: `INSERT INTO ModuleAssessment (moduleId, type, content) VALUES (?, ?, ?)`,
     args: [parseInt(moduleId), type, JSON.stringify(finalJson)]
   });
 
   return finalJson;
+};
+
+/**
+ * Generador curricular de contingencia (Offline / Token-safe)
+ * Garantiza que el estudiante SIEMPRE pueda evaluarse y avanzar incluso si Gemini agota su cuota de tokens.
+ */
+export const generateCurricularFallbackAssessment = (moduleData, resources = [], type = 'completa') => {
+  const title = (moduleData?.title || '').toLowerCase();
+  const desc = (moduleData?.description || '').toLowerCase();
+  const combinedText = `${title} ${desc}`;
+
+  const questionPool = [];
+
+  // Redes: Fundamentos, Topologías y Modelos OSI / TCP-IP
+  if (combinedText.includes('topolog') || combinedText.includes('osi') || combinedText.includes('tcp/ip') || combinedText.includes('fundamentos y arquitecturas')) {
+    questionPool.push(
+      {
+        id: 1,
+        type: 'multiple_choice',
+        question: '¿En qué capa del modelo OSI opera el protocolo IP para el direccionamiento y encaminamiento lógico de paquetes?',
+        options: ['Capa de Red (Capa 3)', 'Capa de Enlace (Capa 2)', 'Capa de Transporte (Capa 4)', 'Capa de Sesión (Capa 5)'],
+        correctAnswer: 'Capa de Red (Capa 3)',
+        explanation: 'El protocolo IP opera en la Capa 3 (Red) del modelo OSI, encargándose del direccionamiento lógico y determinación de la mejor ruta.'
+      },
+      {
+        id: 2,
+        type: 'multiple_choice',
+        question: '¿Cuál es la PDU (Unidad de Datos de Protocolo) correspondiente a la capa de transporte en el modelo TCP/IP?',
+        options: ['Segmento (o Datagrama)', 'Trama (Frame)', 'Paquete', 'Bit'],
+        correctAnswer: 'Segmento (o Datagrama)',
+        explanation: 'En la capa de transporte, la PDU se denomina Segmento en TCP y Datagrama en UDP.'
+      },
+      {
+        id: 3,
+        type: 'true_false',
+        question: 'En una topología en estrella conectada mediante un switch, la desconexión o fallo de un cable de host no interrumpe la comunicación del resto de la red.',
+        options: ['Verdadero', 'Falso'],
+        correctAnswer: 'Verdadero',
+        explanation: 'En la topología en estrella, cada equipo dispone de un enlace dedicado e independiente hacia el switch central, aislando las fallas físicas de cableado.'
+      }
+    );
+  }
+
+  // Redes: Ethernet, MAC, Conmutación
+  if (combinedText.includes('ethernet') || combinedText.includes('conmutac') || combinedText.includes('mac') || combinedText.includes('enlace')) {
+    questionPool.push(
+      {
+        id: 4,
+        type: 'multiple_choice',
+        question: '¿Cuál es la función principal de la tabla CAM (Content Addressable Memory) en un Switch Ethernet?',
+        options: [
+          'Mapear direcciones MAC con sus respectivos puertos físicos para conmutación eficiente',
+          'Almacenar las rutas estáticas hacia otras redes',
+          'Asignar direcciones IP automáticas mediante DHCP',
+          'Filtrar paquetes maliciosos mediante inspección con estado'
+        ],
+        correctAnswer: 'Mapear direcciones MAC con sus respectivos puertos físicos para conmutación eficiente',
+        explanation: 'El switch aprende dinámicamente las direcciones MAC de origen y las asocia al puerto físico correspondiente en su tabla CAM.'
+      },
+      {
+        id: 5,
+        type: 'multiple_choice',
+        question: '¿Qué longitud en bits tiene una dirección física MAC de Ethernet estándar?',
+        options: ['48 bits (6 bytes)', '32 bits (4 bytes)', '64 bits (8 bytes)', '128 bits (16 bytes)'],
+        correctAnswer: '48 bits (6 bytes)',
+        explanation: 'Una dirección MAC consta de 48 bits expresados en 12 dígitos hexadecimales. Los primeros 24 bits corresponden al OUI del fabricante.'
+      }
+    );
+  }
+
+  // Redes: IPv4, Subnetting, VLSM
+  if (combinedText.includes('ipv4') || combinedText.includes('subnet') || combinedText.includes('vlsm') || combinedText.includes('direccionamiento')) {
+    questionPool.push(
+      {
+        id: 6,
+        type: 'multiple_choice',
+        question: '¿Cuántas direcciones IP utilizables para hosts proporciona una subred IPv4 con máscara /26 (255.255.255.192)?',
+        options: ['62 hosts', '64 hosts', '30 hosts', '126 hosts'],
+        correctAnswer: '62 hosts',
+        explanation: 'Con /26 quedan 6 bits de host: 2^6 = 64 direcciones totales. Restando la dirección de red y la de broadcast, quedan 62 hosts útiles.'
+      },
+      {
+        id: 7,
+        type: 'multiple_choice',
+        question: '¿Cuál es el beneficio primordial de implementar VLSM (Variable Length Subnet Masking)?',
+        options: [
+          'Optimizar el espacio de direccionamiento IP evitando el desperdicio en enlaces punto a punto y subredes pequeñas',
+          'Aumentar la velocidad del cableado físico',
+          'Eliminar la necesidad de utilizar switches en la red',
+          'Cifrar automáticamente las cabeceras de los paquetes'
+        ],
+        correctAnswer: 'Optimizar el espacio de direccionamiento IP evitando el desperdicio en enlaces punto a punto y subredes pequeñas',
+        explanation: 'VLSM permite subdividir un bloque de red utilizando máscaras de longitud variable ajustadas al tamaño exacto de cada segmento.'
+      }
+    );
+  }
+
+  // Redes: Transporte TCP/UDP, Servicios DNS/DHCP/NAT
+  if (combinedText.includes('tcp') || combinedText.includes('udp') || combinedText.includes('dns') || combinedText.includes('dhcp') || combinedText.includes('nat') || combinedText.includes('servicios') || combinedText.includes('transporte')) {
+    questionPool.push(
+      {
+        id: 8,
+        type: 'multiple_choice',
+        question: '¿Cuál es la secuencia de paquetes en el apretón de manos de tres vías (Three-Way Handshake) de TCP?',
+        options: ['SYN, SYN-ACK, ACK', 'ACK, SYN, SYN-ACK', 'FIN, ACK, RST', 'HELLO, ACK, READY'],
+        correctAnswer: 'SYN, SYN-ACK, ACK',
+        explanation: 'El cliente inicia enviando SYN, el servidor responde con SYN-ACK, y finalmente el cliente confirma la conexión con ACK.'
+      },
+      {
+        id: 9,
+        type: 'multiple_choice',
+        question: '¿Qué mecanismo traduce direcciones IP privadas de una LAN a una dirección IP pública enrutable en Internet?',
+        options: ['NAT (Network Address Translation)', 'DHCP', 'DNS', 'ARP'],
+        correctAnswer: 'NAT (Network Address Translation)',
+        explanation: 'NAT traduce direcciones de origen privadas a públicas para permitir que múltiples terminales naveguen usando una IP pública.'
+      }
+    );
+  }
+
+  // Redes: IPv6, Enrutamiento OSPF, Seguridad
+  if (combinedText.includes('ipv6') || combinedText.includes('enrutamiento') || combinedText.includes('routing') || combinedText.includes('ospf') || combinedText.includes('firewall') || combinedText.includes('seguridad') || combinedText.includes('acl')) {
+    questionPool.push(
+      {
+        id: 10,
+        type: 'multiple_choice',
+        question: '¿Qué protocolo de enrutamiento dinámico IGP de estado de enlace utiliza el algoritmo de Dijkstra (SPF)?',
+        options: ['OSPF (Open Shortest Path First)', 'RIP v2', 'BGP', 'EGP'],
+        correctAnswer: 'OSPF (Open Shortest Path First)',
+        explanation: 'OSPF es un protocolo de estado de enlace que calcula el árbol de menor costo con el algoritmo Shortest Path First (Dijkstra).'
+      },
+      {
+        id: 11,
+        type: 'multiple_choice',
+        question: '¿Qué tipo de dirección reemplaza el mecanismo de difusión masiva (broadcast) en el protocolo IPv6?',
+        options: ['Multicast (y Anycast)', 'Broadcast universal', 'Unicast no enrutable', 'Loopback 127.0.0.1'],
+        correctAnswer: 'Multicast (y Anycast)',
+        explanation: 'IPv6 eliminó el broadcast tradicional para evitar saturar los enlaces, sustituyéndolo por grupos multicast específicos.'
+      }
+    );
+  }
+
+  // Web: HTTP, HTML, CSS
+  if (combinedText.includes('http') || combinedText.includes('cliente-servidor') || combinedText.includes('html') || combinedText.includes('css')) {
+    questionPool.push(
+      {
+        id: 12,
+        type: 'multiple_choice',
+        question: '¿Qué código de estado HTTP debe devolver una API RESTful al crear exitosamente un nuevo recurso?',
+        options: ['201 Created', '200 OK', '204 No Content', '301 Moved Permanently'],
+        correctAnswer: '201 Created',
+        explanation: 'El código 201 Created indica que la petición se completó con éxito y generó la creación de un nuevo recurso en el servidor.'
+      },
+      {
+        id: 13,
+        type: 'multiple_choice',
+        question: 'En CSS Flexbox, ¿cuál es la propiedad que alinea los elementos a lo largo del eje transversal (cross axis)?',
+        options: ['align-items', 'justify-content', 'flex-direction', 'gap'],
+        correctAnswer: 'align-items',
+        explanation: 'justify-content alinea los elementos a lo largo del eje principal, mientras que align-items lo hace sobre el eje transversal.'
+      }
+    );
+  }
+
+  // Web: JavaScript, DOM, React
+  if (combinedText.includes('javascript') || combinedText.includes('react') || combinedText.includes('dom') || combinedText.includes('componentes') || combinedText.includes('frontend')) {
+    questionPool.push(
+      {
+        id: 14,
+        type: 'multiple_choice',
+        question: '¿Qué hook básico de React permite declarar y actualizar el estado interno en un componente funcional?',
+        options: ['useState', 'useEffect', 'useMemo', 'useContext'],
+        correctAnswer: 'useState',
+        explanation: 'useState es el hook fundamental de React para declarar variables reactivas que provocan re-renderizados al mutar.'
+      },
+      {
+        id: 15,
+        type: 'true_false',
+        question: 'En JavaScript moderno, una función declarada con la palabra clave "async" siempre retorna una Promesa.',
+        options: ['Verdadero', 'Falso'],
+        correctAnswer: 'Verdadero',
+        explanation: 'Toda función "async" envuelve implícitamente su valor de retorno en Promise.resolve().'
+      }
+    );
+  }
+
+  // Web: Node.js, Express, REST, JWT
+  if (combinedText.includes('node') || combinedText.includes('express') || combinedText.includes('jwt') || combinedText.includes('rest') || combinedText.includes('backend') || combinedText.includes('autenticac')) {
+    questionPool.push(
+      {
+        id: 16,
+        type: 'multiple_choice',
+        question: 'En una arquitectura Express.js, ¿cuál es el propósito de invocar la función "next()" dentro de un middleware?',
+        options: [
+          'Pasar el control de la petición al siguiente middleware o controlador en la cadena',
+          'Terminar la petición y cerrar la conexión TCP',
+          'Reiniciar el proceso del servidor Node.js',
+          'Parsear el cuerpo de la petición a formato JSON'
+        ],
+        correctAnswer: 'Pasar el control de la petición al siguiente middleware o controlador en la cadena',
+        explanation: 'Si un middleware no finaliza el ciclo de respuesta, debe invocar next() para continuar el pipeline de middlewares.'
+      },
+      {
+        id: 17,
+        type: 'multiple_choice',
+        question: '¿Cuáles son las tres partes codificadas en Base64Url que componen la estructura de un JSON Web Token (JWT)?',
+        options: [
+          'Header, Payload y Signature',
+          'Header, Body y Footer',
+          'User, Salt y Hash',
+          'Token, Secret y Expiration'
+        ],
+        correctAnswer: 'Header, Payload y Signature',
+        explanation: 'Un JWT se compone de tres partes separadas por puntos: Header (algoritmo), Payload (datos/claims) y Signature (firma de integridad).'
+      }
+    );
+  }
+
+  // Preguntas pedagógicas de refuerzo general si el temario no coincidió directamente
+  if (questionPool.length < 5) {
+    questionPool.push(
+      {
+        id: 18,
+        type: 'multiple_choice',
+        question: `Respecto a los objetivos del tema "${moduleData?.title || 'este módulo'}", ¿cuál es la mejor práctica de ingeniería?`,
+        options: [
+          'Modularizar responsabilidades y validar entradas en cada capa del sistema',
+          'Escribir todo el código en un único archivo para evitar dependencias',
+          'Desactivar validaciones de seguridad para optimizar velocidad',
+          'Omitir pruebas unitarias antes del despliegue a producción'
+        ],
+        correctAnswer: 'Modularizar responsabilidades y validar entradas en cada capa del sistema',
+        explanation: 'La separación de responsabilidades y la validación en todas las capas asegura mantenibilidad, escalabilidad y robustez técnica.'
+      },
+      {
+        id: 19,
+        type: 'true_false',
+        question: 'El cumplimiento riguroso de prerrequisitos conceptuales reduce la probabilidad de vacíos en temas avanzados.',
+        options: ['Verdadero', 'Falso'],
+        correctAnswer: 'Verdadero',
+        explanation: 'En el modelo de grafos curriculares, dominar los conceptos base desbloquea la asimilación efectiva de temas posteriores.'
+      },
+      {
+        id: 20,
+        type: 'multiple_choice',
+        question: '¿Qué principio de ingeniería garantiza que los cambios en una dependencia no rompan el resto de módulos?',
+        options: ['Bajo acoplamiento y alta cohesión', 'Monolito rígido', 'Herencia múltiple sin interfaces', 'Código espagueti'],
+        correctAnswer: 'Bajo acoplamiento y alta cohesión',
+        explanation: 'El bajo acoplamiento minimiza las dependencias cruzadas entre componentes, facilitando pruebas, refactorización y evolución del software.'
+      }
+    );
+  }
+
+  // Seleccionar exactamente 5 preguntas bien formateadas
+  const selectedQuestions = questionPool.slice(0, 5).map((q, idx) => ({ ...q, id: idx + 1 }));
+
+  // Reto práctico contextual
+  const isWeb = combinedText.includes('web') || combinedText.includes('react') || combinedText.includes('node') || combinedText.includes('html') || combinedText.includes('javascript');
+  const practicalChallenge = {
+    title: `Reto Práctico Aplicado: ${moduleData?.title || 'Laboratorio Técnico'}`,
+    context: isWeb
+      ? `Desarrolla e implementa la solución de software correspondiente a ${moduleData?.title || 'este módulo'}. Aplica buenas prácticas de modularidad, tipado y manejo de excepciones.`
+      : `Diseña y valida la topología o configuración correspondiente a ${moduleData?.title || 'este módulo'}. Documenta los direccionamientos, protocolos y pruebas de conectividad necesarias.`,
+    tasks: isWeb
+      ? [
+          { id: 't1', description: 'Definir la estructura del componente o endpoint con validación rigurosa de entradas.' },
+          { id: 't2', description: 'Implementar el manejo asíncrono y control defensivo de estados de error.' },
+          { id: 't3', description: 'Verificar la respuesta esperada ejecutando la prueba en consola o entorno interactivo.' }
+        ]
+      : [
+          { id: 't1', description: 'Determinar el esquema de direccionamiento y máscaras según los requerimientos del segmento.' },
+          { id: 't2', description: 'Especificar la configuración de interfaces y protocolos de enlace o transporte.' },
+          { id: 't3', description: 'Verificar la convergencia y validar el flujo de tráfico punto a punto.' }
+        ]
+  };
+
+  if (type === 'teoria') {
+    return { questions: selectedQuestions };
+  } else if (type === 'practica') {
+    return { practicalChallenge };
+  } else {
+    return {
+      questions: selectedQuestions,
+      practicalChallenge
+    };
+  }
 };

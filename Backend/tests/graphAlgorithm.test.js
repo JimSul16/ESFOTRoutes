@@ -172,4 +172,101 @@ describe('Pruebas Unitarias TDD: Algoritmo de Grafo Adaptativo (graphlib)', () =
     expect(result.orderedTopics[0].topicId).toBe('topicStruggle');
   });
 
+  test('Caso 6: Diferenciación adaptativa entre Nivel 1 (Principiante) y Nivel 5 (Avanzado)', () => {
+    const rawTopics = [
+      {
+        topicId: 't1',
+        topicName: 'Fundamentos de Redes',
+        difficulty: 'Principiante',
+        estimatedMinutes: 60,
+        prerequisites: []
+      },
+      {
+        topicId: 't2',
+        topicName: 'Subnetting IPv4',
+        difficulty: 'Intermedio',
+        estimatedMinutes: 60,
+        prerequisites: [{ id: 't1', strength: 'HARD' }]
+      },
+      {
+        topicId: 't3',
+        topicName: 'Enrutamiento Dinámico',
+        difficulty: 'Avanzado',
+        estimatedMinutes: 60,
+        prerequisites: [{ id: 't2', strength: 'HARD' }]
+      }
+    ];
+
+    // Simular estudiante Nivel 1 (Sin conocimientos)
+    const level1Data = rawTopics.map(t => ({ ...t, selfLevel: 1, struggles: false }));
+    const resultLevel1 = computeAdaptiveRoute(level1Data);
+
+    // Simular estudiante Nivel 5 (Conocimiento pleno)
+    const level5Data = rawTopics.map(t => ({ ...t, selfLevel: 5, struggles: false }));
+    const resultLevel5 = computeAdaptiveRoute(level5Data);
+
+    // 1. Verificación de perfil de aprendizaje
+    expect(resultLevel1.profile).toBe('BEGINNER');
+    expect(resultLevel5.profile).toBe('ADVANCED');
+
+    // 2. Verificación de tiempos estimados adaptativos
+    // Nivel 1 debe tener factor de tiempo incrementado (160%) para nivelación pausada
+    // Nivel 5 debe tener factor de tiempo reducido (40%) para fast-track
+    expect(resultLevel1.summary.totalEstimatedMinutes).toBeGreaterThan(resultLevel5.summary.totalEstimatedMinutes);
+    expect(resultLevel1.orderedTopics[0].estimatedMinutes).toBe(Math.round(60 * 1.6));
+    expect(resultLevel5.orderedTopics[0].estimatedMinutes).toBe(Math.round(60 * 0.4));
+
+    // 3. Verificación de Insignias y Metadatos Pedagógicos
+    expect(resultLevel1.orderedTopics[0].badge).toBe('⚡ Refuerzo Sugerido');
+    expect(resultLevel5.orderedTopics[0].badge).toBe('⭐ Dominio Avanzado Acreditado');
+
+    // 4. Verificación de la estructura modular diferenciada
+    expect(resultLevel1.modules[0].title).toContain('Nivelación');
+    expect(resultLevel5.modules[0].title).toContain('Maestría');
+  });
+
+  test('Caso 7: Perfil Mixto organiza módulo inicial de acreditación y módulo intensivo de refuerzo', () => {
+    const mixedTopics = [
+      {
+        topicId: 't1',
+        topicName: 'HTML5 y CSS3',
+        difficulty: 'Principiante',
+        estimatedMinutes: 50,
+        selfLevel: 5, // Dominado
+        struggles: false,
+        prerequisites: []
+      },
+      {
+        topicId: 't2',
+        topicName: 'JavaScript Asíncrono',
+        difficulty: 'Intermedio',
+        estimatedMinutes: 60,
+        selfLevel: 1, // Dificultad
+        struggles: true,
+        prerequisites: [{ id: 't1', strength: 'HARD' }]
+      },
+      {
+        topicId: 't3',
+        topicName: 'React Framework',
+        difficulty: 'Avanzado',
+        estimatedMinutes: 70,
+        selfLevel: 3, // Estándar
+        struggles: false,
+        prerequisites: [{ id: 't2', strength: 'HARD' }]
+      }
+    ];
+
+    const result = computeAdaptiveRoute(mixedTopics);
+
+    expect(result.profile).toBe('ADAPTIVE');
+    expect(result.modules.length).toBeGreaterThanOrEqual(2);
+    // Módulo 1 consolida temas acreditados
+    expect(result.modules[0].title).toContain('Convalidación');
+    expect(result.modules[0].topics[0].topicId).toBe('t1');
+    // Módulo 2 refuerza temas con dificultad
+    expect(result.modules[1].title).toContain('Nivelación y Refuerzo');
+    expect(result.modules[1].topics[0].topicId).toBe('t2');
+  });
+
 });
+
