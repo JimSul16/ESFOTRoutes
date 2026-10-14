@@ -24,7 +24,9 @@ const ModuleItem = ({
   isGeneratingAssessment,
   loadingType,
 }: ModuleItemProps) => {
-  const isReinforcement = mod.title?.includes('Refuerzo') || mod.title?.includes('Nivelación');
+  const isReinforcement = mod.title?.includes('Refuerzo') || mod.title?.includes('Nivelación') || mod.title?.includes('⚡');
+  const isMastery = mod.title?.includes('Maestría') || mod.title?.includes('Acreditado') || mod.title?.includes('⭐') || mod.title?.includes('Dominio');
+  const isPractical = mod.title?.includes('Consolidación') || mod.title?.includes('Práctico') || mod.title?.includes('✨');
 
   return (
     <div className="bg-white dark:bg-surface-900 border border-surface-200/80 dark:border-surface-800 rounded-2xl overflow-hidden shadow-2xs transition-all duration-200 hover:border-surface-300 dark:hover:border-surface-700">
@@ -42,7 +44,11 @@ const ModuleItem = ({
           ) : (
             <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm border shadow-2xs ${
               isReinforcement
-                ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20'
+                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                : isMastery
+                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                : isPractical
+                ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30'
                 : 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-500/10 dark:text-brand-300 dark:border-brand-500/20'
             }`}>
               {index + 1}
@@ -59,8 +65,18 @@ const ModuleItem = ({
               </span>
             )}
             {isReinforcement && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20 self-start">
-                Módulo de refuerzo
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 self-start inline-flex items-center gap-1">
+                ⚡ Módulo de Refuerzo Sugerido
+              </span>
+            )}
+            {isMastery && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 self-start inline-flex items-center gap-1">
+                ⭐ Dominio Avanzado Acreditado
+              </span>
+            )}
+            {isPractical && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 self-start inline-flex items-center gap-1">
+                ✨ Consolidación Práctica
               </span>
             )}
           </div>

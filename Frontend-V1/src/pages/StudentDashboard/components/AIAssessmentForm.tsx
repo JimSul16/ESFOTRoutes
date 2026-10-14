@@ -48,7 +48,12 @@ const AIAssessmentForm = ({
     const isPassed = percentage >= 70;
 
     if (!isPassed) {
-      toast.warning(`Obtuviste ${percentage}%. Necesitas al menos 70% para aprobar el módulo. Revisa las explicaciones y vuelve a intentarlo.`);
+      try {
+        await completeModule({ moduleId, score: percentage, passed: false });
+      } catch (_) {
+        // Fallo no bloqueante de telemetría
+      }
+      toast.warning(`Obtuviste ${percentage}%. Se registró la retroalimentación en el Grafo Curricular para reforzar estos temas. Revisa las respuestas y vuelve a intentarlo.`);
       setIsSubmitting(false);
       return;
     }

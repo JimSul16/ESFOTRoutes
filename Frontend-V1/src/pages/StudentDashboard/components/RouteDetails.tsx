@@ -42,6 +42,13 @@ const RouteDetail = ({
   isAlreadyEnrolled,
   onAssessmentComplete,
 }: RouteDetailsProps) => {
+  const LOADING_MESSAGES = [
+    'Generando cuestionario con Inteligencia Artificial...',
+    'Optimizando preguntas pedagógicas...',
+    'Ajustando reto práctico según tus prerrequisitos...',
+    'Consultando base de conocimientos curricular...'
+  ];
+
   // Copia local: `route` llega por prop y el padre no la vuelve a actualizar tras
   // aprobar un módulo, así que queda obsoleta. `GET /routes/:id` la refresca al
   // montar y tras cada evaluación superada; la UI debe leer siempre de aquí.
@@ -52,8 +59,24 @@ const RouteDetail = ({
   const [assessmentType, setAssessmentType] = useState<AssessmentType | null>(null);
   const [isGeneratingAssessment, setIsGeneratingAssessment] = useState(false);
   const [loadingType, setLoadingType] = useState<AssessmentType | null>(null);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  const [assessmentTimeoutError, setAssessmentTimeoutError] = useState(false);
+  const [lastRequestedAssessment, setLastRequestedAssessment] = useState<{ moduleId: string; type: AssessmentType } | null>(null);
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [isEnrolling, setIsEnrolling] = useState(false);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+    if (isGeneratingAssessment) {
+      setLoadingMessageIndex(0);
+      interval = setInterval(() => {
+        setLoadingMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
+      }, 4000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isGeneratingAssessment]);
 
   const routeId = route?.id;
 
@@ -116,7 +139,23 @@ const RouteDetail = ({
    */
   const handleAssessmentComplete = (data: CompleteModuleResponse | null) => {
     onAssessmentComplete?.(data);
-    if (data) void refreshRoute();
+    if (data && assessingModuleId) {
+      setRouteData((prev) => {
+        if (!prev) return prev;
+        const updatedModules = prev.modules?.map((m) => {
+          if (m.id === assessingModuleId) {
+            return { ...m, isPassed: true, score: data.score != null ? data.score : 100 };
+          }
+          return m;
+        });
+        return {
+          ...prev,
+          modules: updatedModules,
+          progress: data.progress ?? prev.progress,
+        };
+      });
+      void refreshRoute();
+    }
   };
 
   const handleGenerateAssessment = async (moduleId: string, type: AssessmentType) => {
@@ -127,9 +166,18 @@ const RouteDetail = ({
     setAssessmentData(null);
     setAssessmentType(null);
     setContextoEvaluacion('');
+    setAssessmentTimeoutError(false);
+    setLastRequestedAssessment({ moduleId, type });
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('TIMEOUT_15S')), 15000);
+    });
 
     try {
-      const data = await generateAssessment({ moduleId, type });
+      const data = await Promise.race([
+        generateAssessment({ moduleId, type }),
+        timeoutPromise,
+      ]);
 
       if (type === 'teoria') {
         setAssessmentData(data);
@@ -150,7 +198,10 @@ const RouteDetail = ({
     } catch (error: unknown) {
       setAssessingModuleId(null);
       setAssessmentType(null);
-      if ((error as { response?: { status?: number } })?.response?.status === 429) {
+      if ((error as Error)?.message === 'TIMEOUT_15S') {
+        setAssessmentTimeoutError(true);
+        toast.warning('La generación tomó más de 15 segundos. Puedes reintentar la evaluación.');
+      } else if ((error as { response?: { status?: number } })?.response?.status === 429) {
         toast.warning('La IA está procesando demasiadas solicitudes. Espera un minuto y vuelve a intentarlo.');
       } else {
         toast.error(getApiErrorMessage(error, 'Hubo un error al generar la información. Inténtalo de nuevo.'));
@@ -286,14 +337,48 @@ const RouteDetail = ({
               />
             </div>
           ) : (
-            <ModuleList
-              modules={routeData.modules}
-              expandedModule={expandedModule}
-              onToggle={toggleModule}
-              onGenerateAssessment={handleGenerateAssessment}
-              isGeneratingAssessment={isGeneratingAssessment}
-              loadingType={loadingType}
-            />
+            <>
+              {isGeneratingAssessment && (
+                <div className="bg-brand-50 dark:bg-brand-950/40 border border-brand-200 dark:border-brand-800/60 rounded-2xl p-6 text-center animate-in fade-in flex flex-col items-center justify-center gap-2 mb-4 shadow-sm">
+                  <div className="w-7 h-7 border-3 border-brand-600 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-brand-700 dark:text-brand-300 font-semibold text-sm">
+                    {LOADING_MESSAGES[loadingMessageIndex]}
+                  </p>
+                  <p className="text-xs text-surface-500 dark:text-surface-400">
+                    Conectando con la malla curricular de la ESFOT...
+                  </p>
+                </div>
+              )}
+              {assessmentTimeoutError && lastRequestedAssessment && !isGeneratingAssessment && (
+                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-5 text-center animate-in fade-in flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 shadow-sm">
+                  <div className="text-left">
+                    <p className="text-amber-800 dark:text-amber-300 font-semibold text-sm">
+                      La generación de la prueba tardó más de lo esperado (15s).
+                    </p>
+                    <p className="text-xs text-surface-500 dark:text-surface-400">
+                      Puedes reintentar inmediatamente con el sistema de contingencia curricular.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setAssessmentTimeoutError(false);
+                      void handleGenerateAssessment(lastRequestedAssessment.moduleId, lastRequestedAssessment.type);
+                    }}
+                    className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5 shrink-0"
+                  >
+                    <span>🔄</span> Reintentar evaluación
+                  </button>
+                </div>
+              )}
+              <ModuleList
+                modules={routeData.modules}
+                expandedModule={expandedModule}
+                onToggle={toggleModule}
+                onGenerateAssessment={handleGenerateAssessment}
+                isGeneratingAssessment={isGeneratingAssessment}
+                loadingType={loadingType}
+              />
+            </>
           )}
         </div>
       ) : (

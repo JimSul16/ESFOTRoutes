@@ -79,18 +79,22 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
     setRatings((prev) => ({ ...prev, [topicId]: level }));
   };
 
+  const totalTopics = modules.reduce((acc, m) => acc + (m.topics?.length || 0), 0);
+  const evaluatedCount = Object.keys(ratings).length;
+  const isComplete = totalTopics > 0 && evaluatedCount >= totalTopics;
+
   const handleSubmit = async () => {
     if (!selectedSubject) return;
+
+    if (!isComplete) {
+      toast.warning(`Por favor califica todos los temas de la materia (${evaluatedCount}/${totalTopics}) antes de continuar.`);
+      return;
+    }
 
     const diagnoses = Object.entries(ratings).map(([topicId, level]) => ({
       topicId,
       level,
     }));
-
-    if (diagnoses.length === 0) {
-      toast.warning('Por favor califica al menos un tema antes de continuar.');
-      return;
-    }
 
     setIsSubmitting(true);
     try {
@@ -118,9 +122,6 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
   };
 
   if (!isOpen) return null;
-
-  const totalTopics = modules.reduce((acc, m) => acc + (m.topics?.length || 0), 0);
-  const evaluatedCount = Object.keys(ratings).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
@@ -291,13 +292,13 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
             </button>
             <button
               onClick={handleSubmit}
-              disabled={isSubmitting || loadingTopics || evaluatedCount === 0}
+              disabled={isSubmitting || loadingTopics || !isComplete}
               className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl text-xs font-semibold text-white bg-brand-600 hover:bg-brand-500 border border-brand-500 shadow-md shadow-brand-600/25 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Optimizando secuencia pedagógica...</span>
+                  <span>Optimizando secuencia pedagógica y sincronizando grafo...</span>
                 </>
               ) : (
                 <>

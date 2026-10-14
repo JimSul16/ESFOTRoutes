@@ -183,6 +183,8 @@ export interface CompleteModuleResponse {
   xpGained: number;
   newTotalXp: number;
   newLevel: number;
+  score?: number;
+  passed?: boolean;
 }
 
 export interface LearningRoute {

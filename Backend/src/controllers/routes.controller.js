@@ -1,8 +1,6 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { turso } from '../config/turso.js';
-import { syncRouteToGraph, deleteRouteFromGraph, markModuleAsCompleted } from '../services/neo4j.service.js';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+import { syncRouteToGraph, deleteRouteFromGraph, markModuleAsCompleted, markModuleStruggle } from '../services/neo4j.service.js';
+import { executeWithGeminiCascade } from '../services/chat.service.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -304,7 +302,6 @@ export const generatePersonalizedRoute = async (req, res) => {
       }
     `;
 
-    const model       = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
     const promptParts = [systemPrompt];
 
     if (uploadedFile) {
@@ -313,10 +310,13 @@ export const generatePersonalizedRoute = async (req, res) => {
       });
     }
 
-    const result    = await model.generateContent(promptParts);
-    let aiResponse  = result.response.text().trim();
-    aiResponse      = aiResponse.replace(/```json/gi, '').replace(/```/gi, '').trim();
-    const parsedData = JSON.parse(aiResponse);
+    const parsedData = await executeWithGeminiCascade(async ({ genAI, modelName }) => {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(promptParts);
+      let aiResponse = result.response.text().trim();
+      aiResponse = aiResponse.replace(/```json/gi, '').replace(/```/gi, '').trim();
+      return JSON.parse(aiResponse);
+    });
 
     // Insertar Ruta
     // `subjectId` es opcional: si no viene, se deduce de `category`.
@@ -471,8 +471,24 @@ export const completeModule = async (req, res) => {
     const userId = req.user.id;
     const modId  = parseInt(moduleId);
 
-    if (!passed) {
-      return res.status(200).json({ message: 'Sigue practicando para aprobar el módulo.' });
+    // Obtener routeId y title del módulo
+    const moduleData = await turso.execute({
+      sql: `SELECT routeId, title FROM Module WHERE id = ?`,
+      args: [modId]
+    });
+    if (!moduleData.rows.length) {
+      return res.status(404).json({ error: 'Módulo no encontrado.' });
+    }
+    const routeId = moduleData.rows[0].routeId;
+    const moduleTitle = moduleData.rows[0].title;
+
+    if (!passed || (score !== undefined && score < 70)) {
+      await markModuleStruggle(userId, routeId, moduleTitle, score || 0, 'Reprobó examen de módulo');
+      return res.status(200).json({
+        message: 'Progreso registrado. Sigue practicando para aprobar el módulo. Se reforzarán estos conceptos.',
+        passed: false,
+        score: score || 0
+      });
     }
 
     const existingProgress = await turso.execute({
@@ -488,14 +504,6 @@ export const completeModule = async (req, res) => {
       sql: `INSERT INTO ModuleProgress (userId, moduleId, isPassed, score) VALUES (?, ?, 1, ?)`,
       args: [userId, modId, score || 100]
     });
-
-    // Obtener routeId y title del módulo
-    const moduleData = await turso.execute({
-      sql: `SELECT routeId, title FROM Module WHERE id = ?`,
-      args: [modId]
-    });
-    const routeId = moduleData.rows[0].routeId;
-    const moduleTitle = moduleData.rows[0].title;
 
     // Guardar en el Grafo Neo4j
     await markModuleAsCompleted(userId, routeId, moduleTitle, score || 100);

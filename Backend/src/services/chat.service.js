@@ -5,7 +5,51 @@ import { getDriver } from './neo4j.service.js';
 import { getTopicContextForChat, markTopicStruggle } from './knowledgeGraph.service.js';
 import 'dotenv/config';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+export const PRIMARY_MODEL = process.env.GEMINI_PRIMARY_MODEL || 'gemini-3.5-flash';
+export const BACKUP_MODEL = process.env.GEMINI_BACKUP_MODEL || 'gemini-3.5-flash-lite';
+
+const getPrimaryAI = () => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  return new GoogleGenerativeAI(key);
+};
+
+const getBackupAI = () => {
+  const key = process.env.GEMINI_API_KEY_BACKUP || process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  return new GoogleGenerativeAI(key);
+};
+
+/**
+ * Despachador en cascada de Gemini AI:
+ * Nivel 1: Modelo primario (ej. gemini-3.5-flash) con GEMINI_API_KEY
+ * Nivel 2: Modelo de respaldo (ej. gemini-3.5-flash-lite) con GEMINI_API_KEY_BACKUP
+ * Nivel 3: El llamador ejecuta su fallback offline curricular
+ */
+export const executeWithGeminiCascade = async (executeFn) => {
+  const primaryAI = getPrimaryAI();
+  const backupAI = getBackupAI();
+
+  // Nivel 1: Modelo Primario
+  if (primaryAI) {
+    try {
+      return await executeFn({ genAI: primaryAI, modelName: PRIMARY_MODEL, tier: 1 });
+    } catch (err) {
+      console.warn(`⚠️ [Gemini Cascada Nivel 1 Falló] (${PRIMARY_MODEL}): ${err.message}. Conmutando a Nivel 2 (${BACKUP_MODEL})...`);
+    }
+  }
+
+  // Nivel 2: Modelo de Respaldo
+  if (backupAI) {
+    try {
+      return await executeFn({ genAI: backupAI, modelName: BACKUP_MODEL, tier: 2 });
+    } catch (err) {
+      console.warn(`⚠️ [Gemini Cascada Nivel 2 Falló] (${BACKUP_MODEL}): ${err.message}. Se activará Nivel 3 (Offline / Contingencia)...`);
+    }
+  }
+
+  throw new Error('Todos los niveles de Gemini API fallaron o alcanzaron su límite de cuota.');
+};
 
 /**
  * Actualiza el perfil de aprendizaje del estudiante de forma asíncrona
@@ -22,9 +66,11 @@ export const updateStudentProfile = async (userId, studentMessage, aiMessage, cu
       Devuelve ÚNICAMENTE el texto actualizado del perfil de forma concisa.
     `;
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
-    const result = await model.generateContent(analysisPrompt);
-    const updatedProfile = result.response.text().trim();
+    const updatedProfile = await executeWithGeminiCascade(async ({ genAI, modelName }) => {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(analysisPrompt);
+      return result.response.text().trim();
+    });
 
     await turso.execute({
       sql: `UPDATE User SET learningProfile = ?, updatedAt = datetime('now') WHERE id = ?`,
@@ -147,8 +193,6 @@ export const generateChatResponse = async ({ userId, moduleId, topicId, message,
     4. Mantén un tono académico, motivador y directo.
   `;
 
-  const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash', systemInstruction: systemPrompt });
-
   // 6. Cargar Historial
   const historyResult = await turso.execute({
     sql: `SELECT * FROM ChatMessage WHERE sessionId = ? ORDER BY createdAt ASC`,
@@ -162,14 +206,17 @@ export const generateChatResponse = async ({ userId, moduleId, topicId, message,
 
   let aiResponseText = '';
   try {
-    const chat = model.startChat({ history });
-    const result = await chat.sendMessage(message);
-    aiResponseText = result.response.text();
+    aiResponseText = await executeWithGeminiCascade(async ({ genAI, modelName }) => {
+      const model = genAI.getGenerativeModel({ model: modelName, systemInstruction: systemPrompt });
+      const chat = model.startChat({ history });
+      const result = await chat.sendMessage(message);
+      return result.response.text();
+    });
   } catch (llmErr) {
-    console.warn(`⚠️ Error en llamada a Gemini Chat (${llmErr.message}). Utilizando respuesta pedagógica de contingencia...`);
+    console.warn(`⚠️ Error en llamada a Gemini Chat en todos los niveles (${llmErr.message}). Utilizando respuesta pedagógica de contingencia...`);
     aiResponseText = `Hola ${user?.name || 'estudiante'}, como tutor curricular de la ESFOT estoy aquí para orientarte.
 
-${topicContext ? `Sobre el tema **${topicContext.name}**: ${topicContext.description}\nPrerrequisitos clave: ${topicContext.prerequisites?.map(p => p.name).join(', ') || 'Concepto base'}.` : 'He recibido tu consulta sobre el material del módulo actual.'}
+${topicGraph ? `Sobre el tema **${topicGraph.name}**: ${topicGraph.description}\nPrerrequisitos clave: ${topicGraph.prerequisites?.map(p => p.name).join(', ') || 'Concepto base'}.` : 'He recibido tu consulta sobre el material del módulo actual.'}
 
 Te sugiero repasar los recursos didácticos del módulo y verificar cada paso con las guías de laboratorio. Si tienes dudas en un bloque de código o ejercicio puntual, compártelo detallando el paso donde se produce el inconveniente.`;
   }
@@ -266,13 +313,15 @@ export const generateModuleAssessmentService = async (moduleId, type = 'completa
   let finalJson = null;
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash', systemInstruction: systemPrompt });
-    const chat = model.startChat();
-    const result = await chat.sendMessage('Genera la evaluación ahora. Responde SOLO con el JSON puro.');
-    let aiResponseText = result.response.text().replace(/```json/gi, '').replace(/```/gi, '').trim();
-    finalJson = JSON.parse(aiResponseText);
+    finalJson = await executeWithGeminiCascade(async ({ genAI, modelName }) => {
+      const model = genAI.getGenerativeModel({ model: modelName, systemInstruction: systemPrompt });
+      const chat = model.startChat();
+      const result = await chat.sendMessage('Genera la evaluación ahora. Responde SOLO con el JSON puro.');
+      let aiResponseText = result.response.text().replace(/```json/gi, '').replace(/```/gi, '').trim();
+      return JSON.parse(aiResponseText);
+    });
   } catch (err) {
-    console.warn(`⚠️ Error al generar evaluación con Gemini (${err.message}). Activando generador curricular de contingencia...`);
+    console.warn(`⚠️ Error al generar evaluación con Gemini en todos los niveles (${err.message}). Activando Nivel 3: Generador curricular offline...`);
     finalJson = generateCurricularFallbackAssessment(moduleData, resourcesResult.rows, type);
   }
 

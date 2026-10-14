@@ -125,7 +125,22 @@ export const markModuleAsCompleted = async (userId, routeId, moduleTitle, score)
       `MERGE (u:User {tursoId: $userId})
        MERGE (m:Module {title: $modTitle, routeId: $routeId})
        MERGE (u)-[c:COMPLETED]->(m)
-       SET c.score = $score, c.date = datetime()`,
+       SET c.score = $score, c.date = datetime()
+       WITH u, m
+       OPTIONAL MATCH (u)-[sw:STRUGGLES_WITH]->(m)
+       DELETE sw
+       WITH u
+       OPTIONAL MATCH (targetModule:Module)-[:CONTAINS_TOPIC]->(t:Topic)
+       WHERE targetModule.title = $modTitle OR targetModule.name = $modTitle OR $modTitle CONTAINS targetModule.name
+       FOREACH (_ IN CASE WHEN t IS NOT NULL THEN [1] ELSE [] END |
+         MERGE (u)-[tc:COMPLETED]->(t)
+         SET tc.score = $score, tc.date = datetime()
+       )
+       WITH u
+       OPTIONAL MATCH (targetModule:Module)-[:CONTAINS_TOPIC]->(t:Topic)
+       WHERE targetModule.title = $modTitle OR targetModule.name = $modTitle OR $modTitle CONTAINS targetModule.name
+       OPTIONAL MATCH (u)-[tsw:STRUGGLES_WITH]->(t)
+       DELETE tsw`,
       { 
         userId: userId.toString(), 
         modTitle: moduleTitle, 
@@ -136,6 +151,41 @@ export const markModuleAsCompleted = async (userId, routeId, moduleTitle, score)
     console.log(`✅ Neo4j: Usuario ${userId} completó el módulo '${moduleTitle}'`);
   } catch (err) {
     console.error('❌ Error guardando progreso en Neo4j:', err.message);
+  } finally {
+    await session.close();
+  }
+};
+
+// ── Registrar dificultad con un módulo en el Grafo (Telemetría de Examen) ───
+export const markModuleStruggle = async (userId, routeId, moduleTitle, score, reason = 'Reprobó examen de módulo') => {
+  const driver = getDriver();
+  if (!driver) return;
+
+  const session = getSession(driver);
+  try {
+    await session.run(
+      `MERGE (u:User {tursoId: $userId})
+       MERGE (m:Module {title: $modTitle, routeId: $routeId})
+       MERGE (u)-[sw:STRUGGLES_WITH]->(m)
+       SET sw.score = $score, sw.reason = $reason, sw.date = datetime()
+       WITH u
+       OPTIONAL MATCH (targetModule:Module)-[:CONTAINS_TOPIC]->(t:Topic)
+       WHERE targetModule.title = $modTitle OR targetModule.name = $modTitle OR $modTitle CONTAINS targetModule.name
+       FOREACH (_ IN CASE WHEN t IS NOT NULL THEN [1] ELSE [] END |
+         MERGE (u)-[tsw:STRUGGLES_WITH]->(t)
+         SET tsw.score = $score, tsw.reason = $reason, tsw.date = datetime()
+       )`,
+      {
+        userId: userId.toString(),
+        modTitle: moduleTitle,
+        routeId: routeId.toString(),
+        score: score || 0,
+        reason: `${reason} (${score || 0}%)`
+      }
+    );
+    console.log(`⚠️  Neo4j: Registrada dificultad para usuario ${userId} en módulo '${moduleTitle}'`);
+  } catch (err) {
+    console.error('❌ Error registrando dificultad en Neo4j:', err.message);
   } finally {
     await session.close();
   }
