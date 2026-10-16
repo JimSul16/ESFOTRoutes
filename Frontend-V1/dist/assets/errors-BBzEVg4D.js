@@ -1,1 +1,0 @@
-var e=(e,t=`Ocurrió un error inesperado.`)=>{let n=e?.response?.data;return n?.error?n.error:n?.message?n.message:e?.message||t};export{e as t};
