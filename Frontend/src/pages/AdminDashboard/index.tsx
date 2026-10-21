@@ -107,30 +107,26 @@ const AdminDashboard = () => {
   };
 
   const renderContent = (user: UserDashboard) => {
-    const panel = 'bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800';
-
     switch (activeTab) {
       case 'inicio': return <AdminHome />;
-      case 'usuarios': return <div className={panel}><UsersManager /></div>;
-      case 'recursos': return <div className={panel}><ResourcesManager /></div>;
-      case 'rutas': return <div className={panel}><RoutesManager /></div>;
+      case 'usuarios': return <UsersManager />;
+      case 'recursos': return <ResourcesManager />;
+      case 'rutas': return <RoutesManager />;
       // Antes se renderizaba `<RouteBuilder />` sin props: `onCancel` y
       // `onSaveSuccess` llegaban `undefined` y el formulario reventaba al
       // pulsar Cancelar o Guardar.
       case 'constructor': return (
-        <div className={panel}>
-          <RouteBuilder initialData={null} onCancel={() => setActiveTab('inicio')} onSaveSuccess={() => setActiveTab('rutas')} />
-        </div>
+        <RouteBuilder initialData={null} onCancel={() => setActiveTab('inicio')} onSaveSuccess={() => setActiveTab('rutas')} />
       );
-      case 'roles': return <div className={panel}><RoleManager /></div>;
+      case 'roles': return <RoleManager />;
       case 'perfil': return <AdminProfile userData={user} onPhotoUpdate={handleUpdateUserPhoto} />;
-      default: return <div className={panel}><h2 className="text-2xl font-bold mb-4">Vista Activa: {activeTab}</h2><p>Módulo en construcción...</p></div>;
+      default: return <div><h2 className="text-2xl font-display font-bold mb-4 text-surface-900 dark:text-white">Vista Activa: {activeTab}</h2><p className="text-surface-500 dark:text-surface-400">Módulo en construcción...</p></div>;
     }
   };
 
   if (loadingProfile) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="h-screen w-screen flex items-center justify-center bg-surface-50 dark:bg-surface-950">
         <div
           role="status"
           aria-label="Cargando perfil"
@@ -145,24 +141,24 @@ const AdminDashboard = () => {
   // error con reintento y salida.
   if (profileError || !userData) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6">
+      <div className="h-screen w-screen flex items-center justify-center bg-surface-50 dark:bg-surface-950 p-6">
         <div className="max-w-md text-center space-y-6">
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">
+          <h2 className="text-2xl font-display font-bold text-surface-900 dark:text-white">
             No pudimos cargar tu perfil
           </h2>
-          <p className="text-slate-500 dark:text-slate-400">
+          <p className="text-surface-500 dark:text-surface-400">
             {profileError ?? 'La sesión no es válida o el servidor no responde.'}
           </p>
           <div className="flex gap-3 justify-center">
             <button
               onClick={loadProfile}
-              className="px-5 py-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-semibold hover:opacity-90 transition-opacity"
+              className="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold shadow-md shadow-brand-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
               Reintentar
             </button>
             <button
               onClick={handleLogout}
-              className="px-5 py-2.5 rounded-xl font-semibold text-red-500 bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 transition-colors"
+              className="px-5 py-2.5 rounded-xl font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/40 border border-rose-200/60 dark:border-rose-900/40 transition-all"
             >
               Cerrar sesión
             </button>
@@ -173,7 +169,7 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="h-screen w-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 flex overflow-hidden transition-colors duration-300">
+    <div className="h-screen w-screen bg-surface-50 dark:bg-surface-950 font-sans text-surface-900 dark:text-surface-100 flex overflow-hidden transition-colors duration-300">
       <AdminSidebar activeTab={activeTab} setActiveTab={setActiveTab} toggleTheme={toggleTheme} onLogout={handleLogout} />
       <div className="flex-1 flex flex-col h-full min-w-0 relative overflow-hidden">
         <AdminHeader userData={userData} setActiveTab={setActiveTab} />

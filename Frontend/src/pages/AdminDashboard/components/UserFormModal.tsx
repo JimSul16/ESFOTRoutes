@@ -99,66 +99,66 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center p-4 z-50">
-      <div className="bg-[#1e2333] rounded-xl p-6 w-full max-w-md shadow-2xl border border-gray-700">
-        <h2 className="text-xl font-bold mb-4 text-white">
+      <div className="bg-white dark:bg-surface-900 rounded-2xl p-6 w-full max-w-md shadow-2xl border border-surface-200 dark:border-surface-800 animate-in fade-in zoom-in-95 duration-200">
+        <h2 className="text-xl font-display font-bold mb-4 text-surface-900 dark:text-white">
           {userToEdit ? 'Editar Usuario' : 'Crear Usuario'}
         </h2>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Nombre</label>
+            <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Nombre</label>
             <input
               type="text"
-              className={`w-full rounded-lg bg-[#161a26] border ${errors.name ? 'border-red-500' : 'border-gray-600'} text-white p-2.5 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all`}
+              className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.name ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-sm`}
               {...register("name")}
             />
-            {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+            {errors.name && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.name.message}</p>}
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Correo Institucional</label>
+            <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Correo Institucional</label>
             <input
               type="email"
-              className={`w-full rounded-lg bg-[#161a26] border ${errors.email ? 'border-red-500' : 'border-gray-600'} text-white p-2.5 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all`}
+              className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.email ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-sm`}
               {...register("email")}
             />
-            {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
+            {errors.email && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.email.message}</p>}
           </div>
           
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Contraseña</label>
+                <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Contraseña</label>
                 <input
                   type="password"
-                  className={`w-full rounded-lg bg-[#161a26] border ${errors.password ? 'border-red-500' : 'border-gray-600'} text-white p-2.5 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all`}
+                  className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.password ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-sm`}
                   {...register("password")}
                 />
-                {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
+                {errors.password && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.password.message}</p>}
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Rol</label>
+                <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Rol</label>
                 <select
-                  className={`w-full rounded-lg bg-[#161a26] border ${errors.roleName ? 'border-red-500' : 'border-gray-600'} text-white p-2.5 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all appearance-none`}
+                  className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.roleName ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all appearance-none text-sm`}
                   {...register("roleName")}
                 >
                   <option value="STUDENT">Estudiante</option>
                   <option value="ADMIN">Administrador</option>
                 </select>
-                {errors.roleName && <p className="text-red-500 text-xs mt-1">{errors.roleName.message}</p>}
+                {errors.roleName && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.roleName.message}</p>}
               </div>
             </>
           
-          <div className="flex justify-end space-x-3 mt-8 pt-4 border-t border-gray-700">
+          <div className="flex justify-end space-x-3 mt-8 pt-4 border-t border-surface-200 dark:border-surface-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-transparent text-gray-300 rounded-lg hover:bg-gray-700 transition-colors"
+              className="px-4 py-2 text-surface-600 dark:text-surface-300 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors font-medium text-sm"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-lg"
+              className="px-4 py-2 bg-brand-600 text-white rounded-xl hover:bg-brand-500 transition-all shadow-md shadow-brand-600/20 font-semibold text-sm hover:scale-[1.02] active:scale-[0.98]"
             >
               Guardar
             </button>

@@ -57,10 +57,10 @@ const UsersManager = () => {
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-white">Gestión de Usuarios</h2>
+        <h2 className="text-xl font-display font-bold text-surface-900 dark:text-white">Gestión de Usuarios</h2>
         <button
           onClick={() => handleOpenModal()}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-lg"
+          className="bg-brand-600 text-white px-4 py-2.5 rounded-xl hover:bg-brand-500 transition-all shadow-md shadow-brand-600/20 hover:scale-[1.02] active:scale-[0.98] font-semibold text-sm"
         >
           Crear Usuario
         </button>
