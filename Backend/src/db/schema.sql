@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS User (
   resetToken        TEXT,
   otpCode           TEXT,
   otpExpiresAt      TEXT,
+  otpAttempts       INTEGER NOT NULL DEFAULT 0,
   failedAttempts    INTEGER NOT NULL DEFAULT 0,
   lockoutUntil      TEXT,
   lockoutCount      INTEGER NOT NULL DEFAULT 0,

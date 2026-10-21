@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import { turso } from '../config/turso.js';
+import { clearLockoutState } from '../services/auth.service.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const getUserRoles = async (userId) => {
@@ -139,10 +140,9 @@ export const unlockUser = async (req, res) => {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    await turso.execute({
-      sql: `UPDATE User SET isLocked = 0, unlockToken = NULL, failedAttempts = 0, lockoutUntil = NULL, lockoutCount = 0, updatedAt = datetime('now') WHERE id = ?`,
-      args: [parseInt(id)]
-    });
+    // Reinicia TODO el estado de bloqueo (isLocked, lockoutUntil,
+    // lockoutCount, failedAttempts y otpAttempts).
+    await clearLockoutState(parseInt(id));
 
     res.json({ message: `Cuenta de ${result.rows[0].email} desbloqueada exitosamente.` });
   } catch (error) {

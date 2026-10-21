@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { turso } from '../config/turso.js';
-import { registerUser, generateOTP, verifyOTP } from '../services/auth.service.js';
+import { registerUser, generateOTP, verifyOTP, clearLockoutState, registerFailedOtpAttempt, getAdminEmails } from '../services/auth.service.js';
 import { sendVerificationEmail, sendPasswordResetEmail, sendOTPEmail, sendAdminLockoutAlertEmail } from '../services/email.service.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -58,7 +58,13 @@ const parseUserAgent = (userAgent) => {
 };
 
 /**
- * Registra un intento fallido para un usuario y aplica bloqueo temporal o crítico si corresponde.
+ * Registra un intento fallido de PASSWORD para un usuario y aplica bloqueo
+ * temporal o crítico si corresponde.
+ *
+ * Solo cuenta contraseñas incorrectas. Los códigos OTP (2FA) llevan su propio
+ * contador (ver handleFailedOtpAttempt) porque un código mal escrito no es un
+ * ataque de fuerza bruta: antes ambos compartían contador y bastaban 3
+ * equivocaciones con el OTP para dejar la cuenta bloqueada.
  */
 const handleFailedAttempt = async (user, req, res, reasonMessage) => {
   const currentAttempts = (user.failedAttempts || 0) + 1;
@@ -76,26 +82,41 @@ const handleFailedAttempt = async (user, req, res, reasonMessage) => {
     });
   } catch (_) {}
 
-  // CASO 1: Si ya fue bloqueado temporalmente al menos 1 vez y vuelve a fallar 3 veces consecutivas -> BLOQUEO PERMANENTE
-  if (currentAttempts >= 3 && lockoutCount >= 1) {
+  // CASO 1: La cuenta ya fue bloqueada temporalmente al menos 3 veces y vuelve
+  // a fallar 3 veces consecutivas -> BLOQUEO PERMANENTE.
+  // Antes bastaba 1 ciclo de bloqueo temporal (3 intentos) para quedar
+  // bloqueado de forma permanente e irreversible.
+  if (currentAttempts >= 3 && lockoutCount >= 3) {
     const unlockToken = crypto.randomBytes(32).toString('hex');
     await turso.execute({
       sql: `UPDATE User SET isLocked = 1, unlockToken = ?, failedAttempts = 0 WHERE id = ?`,
       args: [unlockToken, user.id]
     });
 
-    // Enviar alerta por correo al Administrador si está configurado
-    const adminEmail = process.env.FIRST_ADMIN_EMAIL;
-    if (adminEmail) {
+    // Avisar a los administradores reales (usuarios con rol ADMIN en la BD).
+    // Antes el destinatario venía de `FIRST_ADMIN_EMAIL` en el `.env`, que
+    // estaba vacío: el aviso NUNCA salía y la cuenta bloqueada quedaba
+    // inservible sin que nadie lo supiera.
+    const adminEmails = await getAdminEmails();
+
+    if (adminEmails.length) {
       // Apunta a la pantalla de la SPA, que muestra el resultado en el idioma
       // del usuario. El formulario HTML del GET queda como respaldo.
       const unlockUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/desbloquear-cuenta/${unlockToken}`;
-      await sendAdminLockoutAlertEmail({ adminEmail, user, ipAddress, deviceInfo, unlockUrl });
+      await sendAdminLockoutAlertEmail({ adminEmails, user, ipAddress, deviceInfo, unlockUrl });
+    } else {
+      console.error(
+        `⚠️ No hay administradores a los que avisar del bloqueo de [${user.email}]. ` +
+        'Desbloquéalo desde el panel de administración.'
+      );
     }
 
     return res.status(403).json({
-      error: 'Tu cuenta ha sido bloqueada permanentemente tras múltiples intentos fallidos. Se ha notificado al Administrador para su desbloqueo.',
-      isLocked: true
+      error: adminEmails.length
+        ? 'Tu cuenta ha sido bloqueada permanentemente tras múltiples intentos fallidos. Se ha notificado al Administrador para su desbloqueo.'
+        : 'Tu cuenta ha sido bloqueada por seguridad tras varios intentos fallidos. Restablece tu contraseña con "Olvidé mi contraseña" para reactivarla, o contacta al Administrador.',
+      isLocked: true,
+      adminNotified: adminEmails.length > 0
     });
   }
 
@@ -124,6 +145,56 @@ const handleFailedAttempt = async (user, req, res, reasonMessage) => {
   return res.status(401).json({
     message: `${reasonMessage}. Te quedan ${remaining} intento(s) antes del bloqueo temporal.`,
     remainingAttempts: remaining
+  });
+};
+
+/**
+ * Registra un intento fallido de OTP (2FA).
+ *
+ * NO bloquea la cuenta: solo invalida el código vigente y pide uno nuevo.
+ * Antes un OTP mal escrito consumía los 3 intentos de contraseña y terminaba
+ * en un bloqueo temporal/permanente, dejando al usuario sin poder entrar
+ * aunque la contraseña fuera correcta.
+ */
+const handleFailedOtpAttempt = async (user, res, reason) => {
+  const MAX_OTP_ATTEMPTS = 5;
+
+  // No hay ningún código pendiente: el usuario solo tiene que pedir uno nuevo.
+  // No cuenta como intento fallido (no hubo nada que adivinar).
+  if (reason === 'no-otp' || reason === 'no-user') {
+    return res.status(401).json({
+      message: reason === 'no-otp'
+        ? 'No hay ningún código de verificación pendiente. Vuelve a iniciar sesión para que te enviemos uno.'
+        : 'El código de verificación no es correcto.',
+      requiresNewOtp: true
+    });
+  }
+
+  const attempts = await registerFailedOtpAttempt(user.id);
+  const remaining = MAX_OTP_ATTEMPTS - attempts;
+
+  // Al agotar los intentos se invalida el código: hay que pedir uno nuevo.
+  // (Se permite MAX_OTP_ATTEMPTS intentos fallidos; el siguiente lo corta.)
+  if (attempts > MAX_OTP_ATTEMPTS) {
+    await turso.execute({
+      sql: `UPDATE User SET otpCode = NULL, otpExpiresAt = NULL, otpAttempts = 0 WHERE id = ?`,
+      args: [user.id]
+    });
+
+    return res.status(429).json({
+      error: 'Has agotado los intentos del código de verificación. Se ha generado un código nuevo; revisa tu correo.',
+      otpAttemptsExceeded: true
+    });
+  }
+
+  const messages = {
+    expired: 'El código de verificación expiró. Solicita uno nuevo.',
+    invalid: 'El código de verificación no es correcto.'
+  };
+
+  return res.status(401).json({
+    message: `${messages[reason] || messages.invalid} Te quedan ${remaining} intento(s) para el código.`,
+    remainingOtpAttempts: Math.max(remaining, 0)
   });
 };
 
@@ -212,10 +283,20 @@ export const login = async (req, res) => {
 
     const user = result.rows[0];
 
+    // ── Comprobación 0: Cuenta desactivada ───────────────────────────────────
+    // `toggleUserStatus` (panel admin) desactiva cuentas, pero el login nunca
+    // lo comprobaba: un usuario desactivado podía iniciar sesión igual.
+    if (!user.isActive) {
+      return res.status(403).json({
+        error: 'Tu cuenta está desactivada. Contacta al Administrador para reactivarla.',
+        isActive: false
+      });
+    }
+
     // ── Comprobación 1: Bloqueo Crítico Permanente ───────────────────────────
     if (user.isLocked) {
       return res.status(403).json({
-        error: 'Tu cuenta ha sido bloqueada permanentemente por seguridad tras múltiples intentos fallidos. Se ha notificado al Administrador para su desbloqueo.',
+        error: 'Tu cuenta fue bloqueada por seguridad tras varios intentos fallidos. Restablece tu contraseña con "Olvidé mi contraseña" para reactivarla, o contacta al Administrador.',
         isLocked: true
       });
     }
@@ -249,21 +330,41 @@ export const login = async (req, res) => {
       return await handleFailedAttempt(user, req, res, 'Credenciales incorrectas');
     }
 
+    // La contraseña es correcta: se limpia el contador de contraseñas fallidas.
+    // No tiene sentido seguir contando fallos de una contraseña que sí es la
+    // buena (p. ej. el usuario la tecleó mal una vez y luego la acertó).
+    await turso.execute({
+      sql: `UPDATE User SET failedAttempts = 0 WHERE id = ?`,
+      args: [user.id]
+    });
+
     // ── 2FA OTP ──────────────────────────────────────────────────────────────
     if (!otp) {
       const generatedOtp = await generateOTP(email);
-      await sendOTPEmail(email, user.name, generatedOtp);
+      const delivery = await sendOTPEmail(email, user.name, generatedOtp);
+
+      // Si el correo NO salió hay que decirlo: responder "código enviado" sin
+      // haberlo enviado era el motivo de que el usuario se quedara esperando
+      // un código que nunca llegaba y acabara bloqueado por reintentos.
+      if (!delivery?.ok) {
+        console.error(`⚠️ No se pudo entregar el OTP a [${email}]:`, delivery?.error);
+        return res.status(503).json({
+          error: 'No se pudo enviar el código de verificación por correo. Revisa tu bandeja de entrada (incluida la carpeta de spam) o contacta al Administrador.',
+          otpDeliveryFailed: true
+        });
+      }
+
       return res.status(206).json({ message: 'OTP requerido. Se ha enviado un código a su correo.' });
     }
 
-    const isOtpValid = await verifyOTP(email, otp);
-    if (!isOtpValid) {
-      return await handleFailedAttempt(user, req, res, 'Código OTP inválido o expirado');
+    const otpCheck = await verifyOTP(email, otp);
+    if (!otpCheck.valid) {
+      return await handleFailedOtpAttempt(user, res, otpCheck.reason);
     }
 
     // ── Login Exitoso: Resetear contadores de fallos y bloqueos ───────────────
     await turso.execute({
-      sql: `UPDATE User SET failedAttempts = 0, lockoutUntil = NULL, lockoutCount = 0 WHERE id = ?`,
+      sql: `UPDATE User SET failedAttempts = 0, lockoutUntil = NULL, lockoutCount = 0, otpAttempts = 0 WHERE id = ?`,
       args: [user.id]
     });
 
@@ -354,9 +455,18 @@ export const resetPassword = async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await turso.execute({
-      sql: `UPDATE User SET password = ?, resetToken = NULL WHERE id = ?`,
+      sql: `UPDATE User SET password = ?, resetToken = NULL, updatedAt = datetime('now') WHERE id = ?`,
       args: [hashedPassword, result.rows[0].id]
     });
+
+    // ⚠️ CRÍTICO: quien demuestra ser dueño de la cuenta (tiene el token del
+    // correo) recupera el acceso. Antes el reset solo cambiaba el hash: si la
+    // cuenta estaba bloqueada (isLocked / lockoutUntil) el login se cortaba
+    // ANTES de comparar la contraseña y el usuario se quedaba fuera para
+    // siempre, aunque acabara de escribir la contraseña correcta.
+    await clearLockoutState(result.rows[0].id);
+
+    console.log(`🔓 Estado de bloqueo reiniciado tras el reset de contraseña (userId=${result.rows[0].id}).`);
 
     res.json({ message: 'Contraseña actualizada con éxito' });
   } catch (error) {
@@ -537,6 +647,11 @@ export const changePassword = async (req, res) => {
       args: [hashedPassword, userId]
     });
 
+    // El cambio de contraseña es una vía autenticada ⇒ también reinicia el
+    // estado de bloqueo, para no dejar contadores a medias que bloqueen el
+    // siguiente inicio de sesión.
+    await clearLockoutState(userId);
+
     res.json({ message: 'Contraseña actualizada con éxito' });
   } catch (error) {
     console.error('Error en changePassword:', error);
@@ -607,10 +722,7 @@ export const unlockAccountViaToken = async (req, res) => {
     const user = result.rows[0];
 
     // Desbloquear usuario en Turso
-    await turso.execute({
-      sql: `UPDATE User SET isLocked = 0, unlockToken = NULL, failedAttempts = 0, lockoutUntil = NULL, lockoutCount = 0 WHERE id = ?`,
-      args: [user.id]
-    });
+    await clearLockoutState(user.id);
 
     console.log(`🔓 Cuenta [${user.email}] desbloqueada con éxito por el Administrador.`);
 

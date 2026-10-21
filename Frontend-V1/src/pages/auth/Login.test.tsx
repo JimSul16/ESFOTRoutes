@@ -261,7 +261,8 @@ describe('Login — reenvío de código OTP', () => {
     await waitFor(() => {
       expect(screen.getByText('OTP requerido. Se ha enviado un código a su correo.')).toBeTruthy();
     });
-    // El código viejo queda obsoleto tras el reenvío.
+    // El campo se limpia para que el usuario escriba el código que acaba de
+    // llegar al correo (el backend reenvía el mismo código, no lo invalida).
     await waitFor(() => {
       expect(input('otp').value).toBe('');
     });

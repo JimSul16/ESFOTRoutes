@@ -24,28 +24,45 @@ const getTransporter = () => {
 
 /**
  * Función base de envío de correos vía Nodemailer.
+ *
+ * Devuelve SIEMPRE un resultado con `ok` para que el llamador pueda
+ * distinguir "se envió" de "falló". Antes los errores se silenciaban y el
+ * login respondía "OTP enviado" aunque el correo nunca salió: el usuario
+ * reintentaba, el código se invalidaba y acababa bloqueado.
+ *
+ * @returns {Promise<{ ok: boolean, simulated?: boolean, error?: string, messageId?: string }>}
  */
 export const sendEmail = async ({ to, subject, html }) => {
   const transporter = getTransporter();
 
   if (!transporter) {
     console.warn(`⚠️  SMTP no configurado en .env. Correo simulado para [${to}] con asunto: "${subject}"`);
-    return { simulated: true };
+    return { ok: false, simulated: true, error: 'SMTP no está configurado en el servidor (.env).' };
   }
 
   const sender = process.env.SMTP_USER;
-  const info = await transporter.sendMail({
-    from: `"Plataforma ESFOT" <${sender}>`,
-    to,
-    subject,
-    html,
-  });
 
-  console.log(`✉️ Correo enviado a ${to} (MessageId: ${info.messageId})`);
-  return info;
+  try {
+    const info = await transporter.sendMail({
+      from: `"Plataforma ESFOT" <${sender}>`,
+      to,
+      subject,
+      html,
+    });
+
+    console.log(`✉️ Correo enviado a ${to} (MessageId: ${info.messageId})`);
+    return { ok: true, messageId: info.messageId };
+  } catch (error) {
+    console.error(`⚠️ Error enviando correo a [${to}]:`, error.message);
+    return { ok: false, error: error.message };
+  }
 };
 
 // ── 1. Correo de Código 2FA / OTP ─────────────────────────────────────────────
+/**
+ * @returns {Promise<{ ok: boolean, error?: string }>} para que el login pueda
+ * avisar al usuario cuando el código NO llegó a enviarse.
+ */
 export const sendOTPEmail = async (email, name, otpCode) => {
   try {
     const subject = "Tu código de verificación de inicio de sesión - ESFOT";
@@ -64,9 +81,10 @@ export const sendOTPEmail = async (email, name, otpCode) => {
       </div>
     `;
 
-    await sendEmail({ to: email, subject, html });
+    return await sendEmail({ to: email, subject, html });
   } catch (error) {
     console.error("⚠️ Error enviando correo OTP:", error.message);
+    return { ok: false, error: error.message };
   }
 };
 
@@ -115,8 +133,22 @@ export const sendPasswordResetEmail = async (email, name, token) => {
 };
 
 // ── 4. Alerta al Administrador por Bloqueo Crítico de Cuenta ──────────────────
-export const sendAdminLockoutAlertEmail = async ({ adminEmail, user, ipAddress, deviceInfo, unlockUrl }) => {
+/**
+ * Avisa a los administradores del bloqueo de una cuenta.
+ *
+ * @param {object} params
+ * @param {string[]} params.adminEmails  Destinatarios (usuarios con rol ADMIN).
+ */
+export const sendAdminLockoutAlertEmail = async ({ adminEmails, user, ipAddress, deviceInfo, unlockUrl }) => {
   try {
+    const recipients = (Array.isArray(adminEmails) ? adminEmails : [adminEmails])
+      .filter(Boolean);
+
+    if (!recipients.length) {
+      console.warn(`⚠️ Sin destinatarios para la alerta de bloqueo de [${user.email}].`);
+      return { ok: false, error: 'sin destinatarios' };
+    }
+
     const subject = `🚨 ALERTA DE SEGURIDAD: Cuenta Bloqueada por Intentos Excedidos (${user.email})`;
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 2px solid #ef4444; border-radius: 12px; background-color: #ffffff;">
@@ -143,9 +175,17 @@ export const sendAdminLockoutAlertEmail = async ({ adminEmail, user, ipAddress, 
       </div>
     `;
 
-    await sendEmail({ to: adminEmail, subject, html });
-    console.log(`🚨 Correo de alerta de bloqueo enviado al Administrador (${adminEmail}) para la cuenta [${user.email}]`);
+    // Nodemailer acepta varios destinatarios separados por coma.
+    const to = recipients.join(', ');
+    const result = await sendEmail({ to, subject, html });
+
+    if (result?.ok) {
+      console.log(`🚨 Correo de alerta de bloqueo enviado a (${to}) para la cuenta [${user.email}]`);
+    }
+
+    return result;
   } catch (error) {
     console.error("⚠️ Error enviando alerta de bloqueo al administrador:", error.message);
+    return { ok: false, error: error.message };
   }
 };

@@ -33,6 +33,10 @@ export const runMigrations = async () => {
       { name: 'lockoutCount',   type: 'INTEGER NOT NULL DEFAULT 0' },
       { name: 'isLocked',       type: 'INTEGER NOT NULL DEFAULT 0' },
       { name: 'unlockToken',    type: 'TEXT' },
+      // Contador SEPARADO para los intentos de OTP (2FA). Antes un código mal
+      // escrito consumía los mismos 3 intentos que una contraseña incorrecta y
+      // terminaba bloqueando la cuenta. Ver auth.controller.js.
+      { name: 'otpAttempts',    type: 'INTEGER NOT NULL DEFAULT 0' },
     ];
 
     const tableInfo = await turso.execute('PRAGMA table_info(User)');

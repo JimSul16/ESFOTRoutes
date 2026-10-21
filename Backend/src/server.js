@@ -6,7 +6,7 @@ import helmet from "helmet";
 
 import { initDB } from './config/turso.js';
 import { runMigrations } from './db/migrate.js';
-import { initializeFirstAdmin } from './services/init.service.js';
+import { ensureBaseRoles, warnAboutLockedAccounts } from './services/init.service.js';
 import { verifyNeo4jConnection } from './services/neo4j.service.js';
 
 import authRoutes     from './routes/auth.routes.js';
@@ -57,10 +57,26 @@ app.get("/api/health", (req, res) => res.json({ status: "ok", message: "API ESFO
 
 const PORT = process.env.PORT || 3000;
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const startServer = async () => {
-  await initDB();               // Activa foreign_keys en SQLite
+  // Turso es remoto: reintenta el arranque si la red no responde (timeout transitorio)
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await initDB();           // Activa foreign_keys en SQLite
+      break;
+    } catch (err) {
+      if (attempt === MAX_ATTEMPTS) throw err;
+      console.warn(`⚠️  Turso no responde (intento ${attempt}/${MAX_ATTEMPTS}): ${err.message}`);
+      console.warn("   Reintentando en 5s...");
+      await sleep(5000);
+    }
+  }
+
   await runMigrations();        // Crea tablas si no existen
-  await initializeFirstAdmin(); // Garantiza Super Admin
+  await ensureBaseRoles();     // Garantiza roles base y al menos un administrador
+  await warnAboutLockedAccounts(); // Avisa de cuentas bloqueadas sin salida
   await verifyNeo4jConnection(); // Verifica enlace con Grafo de Conocimiento
 
   app.listen(PORT, () => {
@@ -68,4 +84,7 @@ const startServer = async () => {
   });
 };
 
-startServer();
+startServer().catch((err) => {
+  console.error("❌ No se pudo iniciar el servidor:", err.message);
+  process.exit(1);
+});

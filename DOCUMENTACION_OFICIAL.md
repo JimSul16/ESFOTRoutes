@@ -29,7 +29,12 @@ El archivo `.env` centraliza la configuración de conexiones externas (plantilla
 - `SMTP_SERVICE`, `SMTP_USER`, `SMTP_PASS`: Credenciales de Nodemailer para recuperación de cuentas.
 - `FRONTEND_URL`: URL del cliente web para configuración de CORS.
 - `GEMINI_API_KEY`: Clave de acceso a Google AI Studio (`gemini-3.5-flash`).
-- `FIRST_ADMIN_EMAIL` / `FIRST_ADMIN_PASSWORD`: Credenciales obligatorias para crear el primer administrador si no existe.
+
+> **Nota:** ya no existen `FIRST_ADMIN_EMAIL` / `FIRST_ADMIN_PASSWORD`. El administrador se
+> deriva de la base de datos: al arrancar, el backend garantiza los roles base (`ADMIN`,
+> `STUDENT`) y, si el proyecto no tiene ningún usuario con rol `ADMIN`, promueve al más
+> antiguo. Los avisos de bloqueo permanente se envían por correo a los usuarios que ya
+> tienen el rol `ADMIN`.
 
 ---
 
