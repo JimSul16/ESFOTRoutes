@@ -1,4 +1,5 @@
 import type { UserDashboard } from '../../../types';
+import { levelProgress, XP_PER_LEVEL } from '../../../utils/progress';
 import type { StudentTab } from '../index';
 
 export interface StudentSidebarProps {
@@ -46,9 +47,9 @@ const StudentSidebar = ({
     },
   ];
 
-  const currentXp = userData.xp ?? 0;
-  const nextXp = userData.nextRankXp ?? 1000;
-  const xpPercent = Math.min((currentXp / nextXp) * 100, 100);
+  // Progreso dentro del nivel actual (antes se comparaba el XP total contra
+  // 1000, así que la barra se quedaba al 100 % en cuanto se subía de nivel).
+  const { xpInLevel, percent: xpPercent } = levelProgress(userData.xp, userData.level);
 
   return (
     <aside className="w-64 min-w-[16rem] h-full bg-white dark:bg-surface-900 border-r border-surface-200/80 dark:border-surface-800/80 hidden md:flex flex-col justify-between p-5 z-10 flex-shrink-0 transition-colors">
@@ -131,8 +132,8 @@ const StudentSidebar = ({
             />
           </div>
           <div className="flex justify-between items-center text-[11px] text-surface-500 dark:text-surface-400">
-            <span>{currentXp} XP</span>
-            <span>Meta: {nextXp} XP</span>
+            <span>{xpInLevel} XP</span>
+            <span>Meta: {XP_PER_LEVEL} XP</span>
           </div>
         </div>
 

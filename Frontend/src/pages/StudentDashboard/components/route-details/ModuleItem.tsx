@@ -12,6 +12,8 @@ export interface ModuleItemProps {
   onGenerateAssessment: (moduleId: string, type: AssessmentType) => void;
   isGeneratingAssessment: boolean;
   loadingType?: AssessmentType | null;
+  /** Abre el tutor IA con el contexto de este módulo (GraphRAG). */
+  onAskTutor?: (moduleId: string, moduleTitle: string) => void;
 }
 
 const ModuleItem = ({
@@ -23,6 +25,7 @@ const ModuleItem = ({
   onGenerateAssessment,
   isGeneratingAssessment,
   loadingType,
+  onAskTutor,
 }: ModuleItemProps) => {
   const isReinforcement = mod.title?.includes('Refuerzo') || mod.title?.includes('Nivelación') || mod.title?.includes('⚡');
   const isMastery = mod.title?.includes('Maestría') || mod.title?.includes('Acreditado') || mod.title?.includes('⭐') || mod.title?.includes('Dominio');
@@ -107,6 +110,15 @@ const ModuleItem = ({
           </div>
 
           <div className="mt-4 pt-6 border-t border-surface-200 dark:border-surface-700 flex flex-wrap items-center justify-end gap-3">
+            {onAskTutor && (
+              <Button
+                variant="secondary"
+                onClick={() => onAskTutor(mod.id, mod.title)}
+                disabled={isGeneratingAssessment}
+              >
+                💬 Consultar al tutor IA
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={() => onGenerateAssessment(mod.id, 'teoria')}

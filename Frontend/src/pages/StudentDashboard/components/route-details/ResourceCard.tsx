@@ -55,6 +55,7 @@ const ResourceCard = ({ resource: res }: ResourceCardProps) => {
       href={sanitizeUrl(res.url)}
       target="_blank"
       rel="noopener noreferrer"
+      aria-label={`Abrir el recurso: ${res.title}`}
       className="flex items-center justify-between p-3.5 sm:p-4 bg-white dark:bg-surface-900/60 rounded-xl border border-surface-200/80 dark:border-surface-800 hover:border-brand-500/50 hover:bg-brand-50/30 dark:hover:bg-brand-950/20 transition-all group shadow-2xs hover:shadow-sm"
     >
       <div className="flex items-center gap-3 min-w-0">

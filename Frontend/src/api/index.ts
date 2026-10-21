@@ -12,14 +12,12 @@ export {
   isLoginSuccess,
   register,
   verifyAccount,
-  verifyToken,
   getProfile,
   updateProfile,
   changePassword,
   forgotPassword,
   resetPassword,
   getSessions,
-  getSessionHistory,
   unlockAccount,
 } from './auth.api';
 export type {
@@ -69,7 +67,7 @@ export {
 export type { RouteMutationResponse } from './route.api';
 
 // Chat
-export { sendMessage, sendChatMessage, getAssessment, generateAssessment } from './chat.api';
+export { sendChatMessage, generateAssessment } from './chat.api';
 export type {
   AssessmentPayload,
   AssessmentResponse,
@@ -85,11 +83,16 @@ export {
   generatePersonalizedAdaptiveRoute,
   getGraphRecommendations,
   getTopicGraphContext,
+  getModuleTopics,
 } from './graph.api';
 
 // Upload
-export { uploadFile, uploadProfileImage, uploadProfile, uploadCoverImage } from './upload.api';
+export { uploadFile, uploadProfileImage, uploadCoverImage } from './upload.api';
 
 // Execute
-export { runCode, executeCode } from './execute.api';
+export { runCode } from './execute.api';
 export type { ExecuteRunPayload, ExecuteRunResponse } from './execute.api';
+
+// Analytics
+export { getWeeklyActivity } from './analytics.api';
+export type { WeeklyActivityDay, WeeklyActivityResponse } from './analytics.api';

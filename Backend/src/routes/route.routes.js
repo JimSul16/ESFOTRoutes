@@ -11,7 +11,7 @@ import {
   completeModule
 } from '../controllers/routes.controller.js';
 import { verifyToken, checkRoles } from '../middlewares/auth.middleware.js';
-import { uploadCloudinary } from '../services/cloudinary.service.js';
+import { handleUploadError, uploadMaterial } from '../middlewares/upload.middleware.js';
 
 const router = Router();
 
@@ -25,6 +25,11 @@ router.get('/', verifyToken, checkRoles(['ADMIN', 'STUDENT']), getRoutes);
 router.put('/:id', verifyToken, checkRoles(['ADMIN']), updateRoute);
 router.delete('/:id', verifyToken, checkRoles(['ADMIN']), deleteRoute);
 
-router.post('/generate', verifyToken, checkRoles(['STUDENT', 'ADMIN']), uploadCloudinary.single('file'), generatePersonalizedRoute);
+// Genera una ruta con IA a partir de un material de estudio (PDF/TXT/MD).
+// Antes usaba el multer de imágenes, así que subir un PDF devolvía 400.
+router.post('/generate', verifyToken, checkRoles(['STUDENT', 'ADMIN']), uploadMaterial.single('file'), generatePersonalizedRoute);
+
+// Los errores de multer se responden en JSON (no en texto plano).
+router.use(handleUploadError);
 
 export default router;

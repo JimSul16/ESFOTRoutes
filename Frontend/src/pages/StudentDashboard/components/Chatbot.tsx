@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect, type ChangeEvent, type FormEvent } from 'react';
+import { useState, useRef, useEffect, useMemo, type ChangeEvent, type FormEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { sendChatMessage } from '../../../api/chat.api';
+import { getModuleTopics, getTopicGraphContext } from '../../../api/graph.api';
 import { getApiErrorMessage } from '../../../api/errors';
-import type { ChatMessage } from '../../../types';
+import type { ChatMessage, TopicGraphContext } from '../../../types';
 
 /** Mensaje en el hilo, con el archivo adjunto opcional que se subió. */
 interface ThreadMessage extends ChatMessage {
@@ -37,27 +38,123 @@ const Chatbot = ({
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [retoEnviadoId, setRetoEnviadoId] = useState<number | null>(null);
+  /**
+   * Tema curricular del módulo activo. Es lo que activa el GraphRAG: sin él
+   * el tutor recibía el contexto global débil y la detección de bloqueo
+   * (`markTopicStruggle`) nunca llegaba al grafo.
+   */
+  const [topicId, setTopicId] = useState<string | null>(null);
+  const [topicContext, setTopicContext] = useState<TopicGraphContext | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const currentGreeting: ThreadMessage = {
-    sender: 'AI',
-    isGreeting: true,
-    text: activeModule?.title
-      ? `¡Hola! Soy tu tutor virtual de la EPN. Actualmente estás en el módulo "${activeModule.title}". ¿En qué te puedo ayudar hoy o prefieres que te asigne un reto práctico sobre este tema específico?`
-      : routeTitle
-      ? `¡Hola! Soy tu tutor virtual de la EPN para la ruta "${routeTitle}". ¿En qué te puedo ayudar hoy o prefieres que te ponga un reto práctico?`
-      : `¡Hola! Soy tu tutor virtual de la EPN. ¿En qué te puedo ayudar hoy? Puedes hacerme consultas generales o pedirme ejercicios de programación sobre cualquier tema.`
-  };
+  const currentGreeting = useMemo<ThreadMessage>(
+    () => ({
+      sender: 'AI',
+      isGreeting: true,
+      text: activeModule?.title
+        ? `¡Hola! Soy tu tutor virtual de la EPN. Actualmente estás en el módulo "${activeModule.title}". ¿En qué te puedo ayudar hoy o prefieres que te asigne un reto práctico sobre este tema específico?`
+        : routeTitle
+        ? `¡Hola! Soy tu tutor virtual de la EPN para la ruta "${routeTitle}". ¿En qué te puedo ayudar hoy o prefieres que te ponga un reto práctico?`
+        : `¡Hola! Soy tu tutor virtual de la EPN. ¿En qué te puedo ayudar hoy? Puedes hacerme consultas generales o pedirme ejercicios de programación sobre cualquier tema.`
+    }),
+    [activeModule?.title, routeTitle]
+  );
 
-  const displayMessages = [currentGreeting, ...messages];
+  const displayMessages = useMemo(() => [currentGreeting, ...messages], [currentGreeting, messages]);
 
   useEffect(() => {
     if (showChat) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [displayMessages, showChat]);
+
+  /**
+   * Al cambiar de ruta o de módulo, el hilo se reinicia.
+   *
+   * El panel nunca se desmonta (se oculta con CSS), así que los mensajes y el
+   * `sessionId` seguían apuntando al módulo anterior: el tutor respondía con
+   * el contexto de la ruta vieja.
+   */
+  useEffect(() => {
+    setMessages([]);
+    setSessionId(null);
+    setRetoEnviadoId(null);
+  }, [routeId, activeModule?.id]);
+
+  /**
+   * Resuelve el tema curricular del módulo activo en el grafo y guarda su
+   * contexto. Es lo que permite enviar un `topicId` real al chat.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    const moduleId = activeModule?.id;
+
+    // Se limpia SIEMPRE al principio: si no, al cambiar de módulo A a B el
+    // `topicId` de A seguía en el estado durante el round-trip y podía
+    // viajar con el `moduleId` de B (el tutor respondía sobre el tema viejo).
+    setTopicId(null);
+    setTopicContext(null);
+
+    if (!showChat || !moduleId) {
+      return;
+    }
+
+    (async () => {
+      try {
+        const topics = await getModuleTopics(moduleId);
+        if (cancelled || topics.length === 0) {
+          setTopicId(null);
+          setTopicContext(null);
+          return;
+        }
+
+        const first = topics[0];
+        setTopicId(first.id);
+
+        const context = await getTopicGraphContext(first.id);
+        if (!cancelled) setTopicContext(context);
+      } catch {
+        // Sin tema no se rompe el chat: sigue funcionando con el contexto global.
+        if (!cancelled) {
+          setTopicId(null);
+          setTopicContext(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showChat, activeModule?.id]);
+
+  /**
+   * Tema que se debe enviar con el mensaje.
+   *
+   * Se resuelve en el momento del envío (y no sólo desde el estado) porque
+   * el flujo "Evaluar con IA" dispara el mensaje en el mismo commit en el que
+   * se abre el chat: el `topicId` todavía no había resuelto y el mensaje
+   * salía sin contexto GraphRAG.
+   */
+  const resolveTopicId = async (): Promise<string | undefined> => {
+    if (topicId) return topicId;
+
+    const moduleId = activeModule?.id;
+    if (!moduleId) return undefined;
+
+    try {
+      const topics = await getModuleTopics(moduleId);
+      const resolved = topics[0]?.id;
+      if (resolved) {
+        setTopicId(resolved);
+        void getTopicGraphContext(resolved).then(setTopicContext).catch(() => {});
+      }
+      return resolved;
+    } catch {
+      return undefined;
+    }
+  };
 
   const processMessage = async (text: string, file: File | null) => {
     setMessages((prev) => [
@@ -68,11 +165,15 @@ const Chatbot = ({
     setIsLoading(true);
 
     try {
+      // El `topicId` es lo que enciende el GraphRAG del tutor.
+      const resolvedTopicId = await resolveTopicId();
+
       // Antes: `fetch()` nativo. Ahora pasa por la capa tipada, que además
       // añade el `Authorization` automáticamente.
       const data = await sendChatMessage({
         routeId,
         moduleId: activeModule?.id ?? undefined,
+        topicId: resolvedTopicId,
         message: text || 'Revisa el archivo adjunto (simulación).',
         sessionId: sessionId ?? undefined,
       });
@@ -151,6 +252,13 @@ const Chatbot = ({
               <span className="text-xs text-brand-100/90 font-medium truncate max-w-[220px] block mt-0.5">
                 {activeModule?.title || routeTitle || 'Asistente Académico'}
               </span>
+              {/* Contexto GraphRAG activo: el tutor trabaja con el subgrafo de
+                  este tema, no con el contexto global. */}
+              {topicContext && (
+                <span className="text-[10px] text-brand-100/80 font-medium truncate max-w-[220px] block mt-0.5">
+                  📚 {topicContext.subjectName ?? 'Materia'} · {topicContext.name}
+                </span>
+              )}
             </div>
           </div>
           <button 
@@ -259,7 +367,7 @@ const Chatbot = ({
                 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                 <span className="truncate font-medium">{selectedFile.name}</span>
               </div>
-              <button type="button" onClick={() => setSelectedFile(null)} className="hover:text-rose-500 transition-colors p-1">
+              <button type="button" onClick={() => setSelectedFile(null)} aria-label="Quitar archivo adjunto" className="hover:text-rose-500 transition-colors p-1">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>
@@ -274,9 +382,10 @@ const Chatbot = ({
               accept=".pdf,.doc,.docx,.txt"
             />
             
-            <button 
-              type="button" 
+            <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
+              aria-label="Adjuntar material de estudio"
               className="p-2.5 text-surface-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-surface-800 rounded-xl transition-colors shrink-0"
               title="Adjuntar material de estudio"
             >
@@ -292,9 +401,10 @@ const Chatbot = ({
               className="flex-1 bg-surface-100 dark:bg-surface-800/80 text-surface-900 dark:text-surface-100 rounded-xl px-3.5 py-2.5 text-sm focus:outline-hidden focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 disabled:opacity-50 border border-surface-200 dark:border-surface-700 transition-all placeholder:text-surface-400"
             />
             
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={isLoading || (!input.trim() && !selectedFile)}
+              aria-label="Enviar mensaje al tutor"
               className="bg-brand-600 text-white p-2.5 rounded-xl hover:bg-brand-700 disabled:bg-surface-200 disabled:text-surface-400 dark:disabled:bg-surface-800 dark:disabled:text-surface-600 transition-all flex items-center justify-center shrink-0 shadow-xs hover:shadow-brand-500/20"
             >
               <svg className="w-5 h-5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>

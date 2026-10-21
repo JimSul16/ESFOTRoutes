@@ -28,6 +28,10 @@ Respaldos Grafo/
 # No forma parte del código de la plataforma.
 Pruebas/
 
+# Página de pruebas de autenticación manual. Contiene credenciales de prueba
+# en claro: no debe versionarse (ya se retiró del índice de git).
+Frontend/index_test_auth.html
+
 # Carpeta de Postman: colecciones, entornos con tokens JWT vivos y scripts de
 # demo con credenciales en claro. Es material de trabajo, no código de la app.
 Backend/postman/

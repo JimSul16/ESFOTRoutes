@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import { toast } from 'react-toastify';
 import { runCode } from '../../../api/execute.api';
@@ -32,6 +32,14 @@ const CodeWorkspace = ({ onSendToAI, challengeData }: CodeWorkspaceProps) => {
   const [output, setOutput] = useState('');
   const [inputData, setInputData] = useState('');
   const [isRunning, setIsRunning] = useState(false);
+  /** Temporizador de la ventana de "forzar envío" (se limpia al desmontar). */
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (isMultiTask) {
@@ -65,7 +73,15 @@ const CodeWorkspace = ({ onSendToAI, challengeData }: CodeWorkspaceProps) => {
     field: keyof TaskState,
     value: string | File | undefined
   ) => {
-    if (!taskId || typeof value !== 'string') return;
+    if (!taskId) return;
+
+    // El valor puede ser texto (editor) o un `File` (adjunto del reto).
+    // Antes solo se aceptaba texto, así que el archivo NUNCA se guardaba:
+    // `td.file` quedaba siempre en `undefined`, la tarea se contaba como
+    // vacía ("Tienes N tarea(s) vacía(s)") y la rama de "Evidencia adjunta"
+    // era código muerto.
+    if (value === undefined && field !== 'file') return;
+
     setTaskData((prev) => ({
       ...prev,
       [taskId]: { ...prev[taskId], [field]: value },
@@ -108,7 +124,10 @@ const CodeWorkspace = ({ onSendToAI, challengeData }: CodeWorkspaceProps) => {
         setSubmitWarning(true);
         setIsHolding(true);
         toast.warning(`¡Atención! Tienes ${emptyTasks.length} tarea(s) vacía(s). Podrás forzar el envío en 5 segundos.`);
-        setTimeout(() => setIsHolding(false), 5000);
+        // Antes el temporizador no se limpiaba: al desmontar el componente
+        // seguía vivo y hacía `setState` sobre un componente desmontado.
+        if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+        holdTimerRef.current = setTimeout(() => setIsHolding(false), 5000);
         return;
       }
 
@@ -291,7 +310,7 @@ const CodeWorkspace = ({ onSendToAI, challengeData }: CodeWorkspaceProps) => {
           <div className="flex-1 flex flex-col min-h-0 border-b border-slate-800/80">
             <div className="px-4 py-2 bg-[#12141c] border-b border-slate-800/80 flex items-center justify-between shrink-0">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Salida de Consola</span>
-              <button onClick={() => setOutput('')} className="text-slate-500 hover:text-slate-300">
+              <button onClick={() => setOutput('')} aria-label="Limpiar la salida de consola" className="text-slate-500 hover:text-slate-300">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
               </button>
             </div>
@@ -305,7 +324,7 @@ const CodeWorkspace = ({ onSendToAI, challengeData }: CodeWorkspaceProps) => {
           <div className="flex-1 flex flex-col min-h-0">
             <div className="px-4 py-2 bg-[#12141c] border-b border-slate-800/80 flex items-center justify-between shrink-0">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Entrada (stdin)</span>
-              <button onClick={() => setInputData('')} className="text-slate-500 hover:text-slate-300">
+              <button onClick={() => setInputData('')} aria-label="Limpiar la entrada estándar" className="text-slate-500 hover:text-slate-300">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
               </button>
             </div>

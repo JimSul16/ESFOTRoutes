@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { getMyRoutes } from '../../../api/route.api';
 import { getSubjects } from '../../../api/graph.api';
+import { getWeeklyActivity } from '../../../api/analytics.api';
 import { getApiErrorMessage } from '../../../api/errors';
 import { Card, CardBody, CardHeader, Spinner } from '@/components/ui';
 import type { AnalyticsData, SubjectProgress, UserDashboard } from '../../../types';
@@ -22,15 +23,22 @@ const AnalyticsDashboard = ({ userData }: AnalyticsDashboardProps) => {
         // Antes usaba `httpClient.get('/graph/subjects')` y hacía
         // `subjectsRes.data`, que es el sobre `{ success, subjects }`, no un
         // array: `subjects.map` reventaba y el panel quedaba en error.
-        const [routes, subjects] = await Promise.all([getMyRoutes(), getSubjects()]);
+        const [routes, subjects, weekly] = await Promise.all([
+          getMyRoutes(),
+          getSubjects(),
+          getWeeklyActivity(),
+        ]);
 
         const subjectProgress: SubjectProgress[] = subjects.map((subject) => {
           // `LearningRoute.subjectId` es real desde el 11/10/2026: el backend
           // lo deduce de `category` y lo rellena al generar rutas adaptativas.
           const subjectRoutes = routes.filter((r) => r.subjectId === subject.id);
 
+          // Ojo: el backend marca el módulo con `isPassed`, no con
+          // `completed`. Antes se leía `m.completed` (que nunca venía) y el
+          // contador de módulos completados salía siempre en 0.
           const completedModules = subjectRoutes.reduce(
-            (acc, r) => acc + (r.modules?.filter((m) => m.completed).length ?? 0),
+            (acc, r) => acc + (r.modules?.filter((m) => m.isPassed).length ?? 0),
             0
           );
 
@@ -54,16 +62,12 @@ const AnalyticsDashboard = ({ userData }: AnalyticsDashboardProps) => {
           };
         });
 
-        // TODO: valores de ejemplo. El backend no expone actividad por día.
-        const weeklyActivity = [
-          { day: 'Lun', minutes: 45 },
-          { day: 'Mar', minutes: 120 },
-          { day: 'Mie', minutes: 30 },
-          { day: 'Jue', minutes: 90 },
-          { day: 'Vie', minutes: 60 },
-          { day: 'Sab', minutes: 150 },
-          { day: 'Dom', minutes: 20 },
-        ];
+        // Actividad real: la calcula el backend a partir de `ModuleProgress`.
+        // Antes eran valores de ejemplo hardcodeados (45/120/30... minutos).
+        const weeklyActivity = weekly.weeklyActivity.map((day) => ({
+          day: day.day,
+          minutes: day.minutes,
+        }));
 
         // `progress` ahora lo devuelve `getMyRoutes`, así que la distro es real.
         const progressDistribution = [
@@ -136,17 +140,29 @@ const AnalyticsDashboard = ({ userData }: AnalyticsDashboardProps) => {
           </CardHeader>
           <CardBody>
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={progressData?.weeklyActivity || []}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
-                  <XAxis dataKey="day" stroke="#78716c" fontSize={12} />
-                  <YAxis stroke="#78716c" fontSize={12} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #e7e5e4', borderRadius: '8px' }}
-                  />
-                  <Line type="monotone" dataKey="minutes" stroke="#006fc5" strokeWidth={2} dot={{ fill: '#006fc5' }} />
-                </LineChart>
-              </ResponsiveContainer>
+              {progressData && progressData.weeklyActivity.every((day) => day.minutes === 0) ? (
+                // Estado vacío honesto: antes se pintaban minutos inventados.
+                <div className="h-full flex flex-col items-center justify-center text-center px-6">
+                  <p className="text-sm font-semibold text-surface-600 dark:text-surface-300">
+                    Sin módulos superados esta semana
+                  </p>
+                  <p className="text-xs text-surface-400 mt-1">
+                    Completa y aprueba un módulo para que la actividad aparezca aquí.
+                  </p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={progressData?.weeklyActivity || []}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
+                    <XAxis dataKey="day" stroke="#78716c" fontSize={12} />
+                    <YAxis stroke="#78716c" fontSize={12} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#fff', border: '1px solid #e7e5e4', borderRadius: '8px' }}
+                    />
+                    <Line type="monotone" dataKey="minutes" stroke="#006fc5" strokeWidth={2} dot={{ fill: '#006fc5' }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </CardBody>
         </Card>

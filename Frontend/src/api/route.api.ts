@@ -1,9 +1,11 @@
 import httpClient from './httpClient';
+import { normalizeEnrollment, normalizeRoute, normalizeRoutes } from './normalize';
 import type {
   CompleteModulePayload,
   CompleteModuleResponse,
   EnrollResponse,
   LearningRoute,
+  RawLearningRoute,
   RoutePayload,
 } from '../types';
 
@@ -17,13 +19,16 @@ export interface RouteMutationResponse {
 }
 
 export const getRoutes = async (): Promise<LearningRoute[]> => {
-  const response = await httpClient.get<LearningRoute[]>('/routes');
-  return response.data;
+  const response = await httpClient.get<RawLearningRoute[]>('/routes');
+  return normalizeRoutes(response.data);
 };
 
 export const createRoute = async (routeData: RoutePayload): Promise<RouteMutationResponse> => {
-  const response = await httpClient.post<RouteMutationResponse>('/routes', routeData);
-  return response.data;
+  const response = await httpClient.post<{ message: string; route: RawLearningRoute }>(
+    '/routes',
+    routeData
+  );
+  return { ...response.data, route: normalizeRoute(response.data.route) };
 };
 
 export const deleteRoute = async (id: string): Promise<void> => {
@@ -31,26 +36,35 @@ export const deleteRoute = async (id: string): Promise<void> => {
 };
 
 export const getRouteById = async (id: string): Promise<LearningRoute> => {
-  const response = await httpClient.get<LearningRoute>(`/routes/${id}`);
-  return response.data;
+  const response = await httpClient.get<RawLearningRoute>(`/routes/${id}`);
+  return normalizeRoute(response.data);
 };
 
 export const updateRoute = async (
   id: string,
   routeData: RoutePayload
 ): Promise<RouteMutationResponse> => {
-  const response = await httpClient.put<RouteMutationResponse>(`/routes/${id}`, routeData);
-  return response.data;
+  const response = await httpClient.put<{ message: string; route: RawLearningRoute }>(
+    `/routes/${id}`,
+    routeData
+  );
+  return { ...response.data, route: normalizeRoute(response.data.route) };
 };
 
 export const getMyRoutes = async (): Promise<LearningRoute[]> => {
-  const response = await httpClient.get<LearningRoute[]>('/routes/my-routes');
-  return response.data;
+  const response = await httpClient.get<RawLearningRoute[]>('/routes/my-routes');
+  return normalizeRoutes(response.data);
 };
 
 export const enrollRoute = async (routeId: string): Promise<EnrollResponse> => {
   const response = await httpClient.post<EnrollResponse>(`/routes/${routeId}/enroll`);
-  return response.data;
+  // `enrollment` es la fila cruda de Turso: sus ids llegan como número.
+  return {
+    ...response.data,
+    enrollment: response.data.enrollment
+      ? normalizeEnrollment(response.data.enrollment)
+      : response.data.enrollment,
+  };
 };
 
 export const completeModule = async (
@@ -65,8 +79,12 @@ export const completeModule = async (
  * no `coverImage`: quien llama debe armar el FormData accordingly.
  */
 export const generateRoute = async (formData: FormData): Promise<RouteMutationResponse> => {
-  const response = await httpClient.post<RouteMutationResponse>('/routes/generate', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
-  return response.data;
+  const response = await httpClient.post<{ message: string; route: RawLearningRoute }>(
+    '/routes/generate',
+    formData,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }
+  );
+  return { ...response.data, route: normalizeRoute(response.data.route) };
 };

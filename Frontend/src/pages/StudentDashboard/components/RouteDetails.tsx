@@ -18,6 +18,20 @@ import type {
 
 const CODING_KEYWORDS = ['javascript', 'js', 'react', 'node', 'python', 'html', 'css', 'web', 'programación'];
 
+/**
+ * Mensajes rotativos mientras la IA genera la evaluación.
+ *
+ * Antes vivían dentro del componente: se recreaban en cada render y el
+ * `useEffect` que los usa dependía de `LOADING_MESSAGES.length`, una
+ * dependencia que cambiaba en cada render (aviso de `exhaustive-deps`).
+ */
+const LOADING_MESSAGES = [
+  'Generando cuestionario con Inteligencia Artificial...',
+  'Optimizando preguntas pedagógicas...',
+  'Ajustando reto práctico según tus prerrequisitos...',
+  'Consultando base de conocimientos curricular...'
+];
+
 export interface RouteDetailsProps {
   route: LearningRoute | null;
   viewMode: 'teoria' | 'practica';
@@ -39,19 +53,12 @@ const RouteDetail = ({
   contextoEvaluacion,
   setContextoEvaluacion,
   onSendToAI,
+  onOpenChat,
   isAlreadyEnrolled,
   onAssessmentComplete,
 }: RouteDetailsProps) => {
-  const LOADING_MESSAGES = [
-    'Generando cuestionario con Inteligencia Artificial...',
-    'Optimizando preguntas pedagógicas...',
-    'Ajustando reto práctico según tus prerrequisitos...',
-    'Consultando base de conocimientos curricular...'
-  ];
+  const LOADING_MESSAGES_LENGTH = LOADING_MESSAGES.length;
 
-  // Copia local: `route` llega por prop y el padre no la vuelve a actualizar tras
-  // aprobar un módulo, así que queda obsoleta. `GET /routes/:id` la refresca al
-  // montar y tras cada evaluación superada; la UI debe leer siempre de aquí.
   const [routeData, setRouteData] = useState<LearningRoute | null>(route);
   const [expandedModule, setExpandedModule] = useState<string | null>(null);
   const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
@@ -70,13 +77,13 @@ const RouteDetail = ({
     if (isGeneratingAssessment) {
       setLoadingMessageIndex(0);
       interval = setInterval(() => {
-        setLoadingMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
+        setLoadingMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES_LENGTH);
       }, 4000);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isGeneratingAssessment]);
+  }, [isGeneratingAssessment, LOADING_MESSAGES_LENGTH]);
 
   const routeId = route?.id;
 
@@ -377,6 +384,11 @@ const RouteDetail = ({
                 onGenerateAssessment={handleGenerateAssessment}
                 isGeneratingAssessment={isGeneratingAssessment}
                 loadingType={loadingType}
+                onAskTutor={
+                  onOpenChat
+                    ? (moduleId, moduleTitle) => onOpenChat(moduleId, moduleTitle)
+                    : undefined
+                }
               />
             </>
           )}

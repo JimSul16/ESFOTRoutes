@@ -5,7 +5,8 @@ import {
   submitSelfDiagnosis,
   generatePersonalizedRoute,
   getRecommendations,
-  getTopicContext
+  getTopicContext,
+  getModuleTopics
 } from '../controllers/graph.controller.js';
 import { verifyToken, checkRoles } from '../middlewares/auth.middleware.js';
 
@@ -17,6 +18,7 @@ router.get('/subjects/:id/topics', verifyToken, getSubjectTopics);
 router.post('/self-diagnosis', verifyToken, checkRoles(['STUDENT', 'ADMIN']), submitSelfDiagnosis);
 router.post('/generate-personalized-route', verifyToken, checkRoles(['STUDENT', 'ADMIN']), generatePersonalizedRoute);
 router.get('/recommendations', verifyToken, checkRoles(['STUDENT', 'ADMIN']), getRecommendations);
+router.get('/module/:moduleId/topics', verifyToken, getModuleTopics);
 router.get('/topic/:topicId/context', verifyToken, getTopicContext);
 
 export default router;

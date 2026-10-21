@@ -28,6 +28,16 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [modules, setModules] = useState<GraphModule[]>([]);
   const [ratings, setRatings] = useState<Record<string, number>>({});
+  /**
+   * Temas que el estudiante ha tocado de verdad.
+   *
+   * Antes `ratings` se inicializaba con TODOS los temas en 3, así que
+   * `evaluatedCount` valía `totalTopics` desde el primer segundo: el botón
+   * "Generar Mi Ruta Adaptativa" nunca se deshabilitaba y el pie decía
+   * "9/9 temas evaluados" sin que el alumno hubiera tocado nada. Como
+   * `selfLevel` es la única señal que el grafo consume, la ruta salía plana.
+   */
+  const [touched, setTouched] = useState<Record<string, true>>({});
   const [loadingSubjects, setLoadingSubjects] = useState(false);
   const [loadingTopics, setLoadingTopics] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -57,10 +67,12 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
     setSelectedSubject(subject);
     setLoadingTopics(true);
     setRatings({});
+    setTouched({});
     try {
       const data = await getSubjectTopics(subject.id);
       setModules(data);
-      // Inicializar niveles por defecto en 3 (Intermedio)
+      // Nivel por defecto 3 (Intermedio) como punto de partida visual, pero
+      // SIN marcar el tema como evaluado: hace falta que el alumno lo toque.
       const initial: Record<string, number> = {};
       data.forEach((m) => {
         m.topics?.forEach((t) => {
@@ -77,10 +89,12 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
 
   const handleRate = (topicId: string, level: number) => {
     setRatings((prev) => ({ ...prev, [topicId]: level }));
+    setTouched((prev) => ({ ...prev, [topicId]: true }));
   };
 
   const totalTopics = modules.reduce((acc, m) => acc + (m.topics?.length || 0), 0);
-  const evaluatedCount = Object.keys(ratings).length;
+  // Solo cuentan los temas realmente calificados por el estudiante.
+  const evaluatedCount = Object.keys(touched).length;
   const isComplete = totalTopics > 0 && evaluatedCount >= totalTopics;
 
   const handleSubmit = async () => {
@@ -91,9 +105,10 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
       return;
     }
 
-    const diagnoses = Object.entries(ratings).map(([topicId, level]) => ({
+    // Solo se envían los temas realmente evaluados por el estudiante.
+    const diagnoses = Object.entries(touched).map(([topicId]) => ({
       topicId,
-      level,
+      level: ratings[topicId] ?? 3,
     }));
 
     setIsSubmitting(true);
@@ -202,6 +217,7 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
                 <div className="space-y-3.5">
                   {mod.topics?.map((topic) => {
                     const currentRating = ratings[topic.id] || 3;
+                    const isRated = Boolean(touched[topic.id]);
                     return (
                       <div
                         key={topic.id}
@@ -227,7 +243,7 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
                                 key={lvl}
                                 onClick={() => handleRate(topic.id, lvl)}
                                 className={`w-8 h-8 rounded-lg text-xs font-bold transition-all border ${
-                                  currentRating === lvl
+                                  isRated && currentRating === lvl
                                     ? 'bg-brand-600 text-white border-brand-500 shadow-sm scale-105'
                                     : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:text-surface-900 dark:hover:text-white hover:bg-surface-200 dark:hover:bg-surface-700 border-surface-200 dark:border-surface-700'
                                 }`}
@@ -241,8 +257,12 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
 
                         {/* Badges de Prerrequisitos */}
                         <div className="flex items-center gap-2 pt-2 border-t border-surface-100 dark:border-surface-800/60 flex-wrap">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-md border font-semibold ${LEVEL_LABELS[currentRating].color}`}>
-                            {LEVEL_LABELS[currentRating].text}
+                          <span className={`text-[10px] px-2 py-0.5 rounded-md border font-semibold ${
+                            isRated
+                              ? LEVEL_LABELS[currentRating].color
+                              : 'bg-surface-100 dark:bg-surface-800 text-surface-400 dark:text-surface-500 border-surface-200 dark:border-surface-700'
+                          }`}>
+                            {isRated ? LEVEL_LABELS[currentRating].text : 'Sin evaluar'}
                           </span>
 
                           {topic.prerequisites && topic.prerequisites.length > 0 ? (

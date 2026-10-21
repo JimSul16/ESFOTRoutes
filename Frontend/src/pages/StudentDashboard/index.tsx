@@ -11,6 +11,7 @@ import type {
   User,
   UserDashboard,
 } from '../../types';
+import { XP_PER_LEVEL } from '../../utils/progress';
 
 import StudentSidebar from './components/StudentSidebar';
 import StudentHeader from './components/StudentHeader';
@@ -110,7 +111,7 @@ const StudentDashboard = () => {
         streak: profile.streak ?? 0,
         level: profile.level ?? 1,
         xp: profile.xp ?? 0,
-        nextRankXp: 1000,
+        nextRankXp: XP_PER_LEVEL,
       });
     } catch (error: unknown) {
       setProfileError(getApiErrorMessage(error, 'No se pudo cargar tu perfil.'));
@@ -230,15 +231,13 @@ const StudentDashboard = () => {
 
     const gained = data.xpGained ?? 0;
 
-    setUserData((prev) => {
-      if (!prev) return prev;
+    // El updater de `setState` debe ser puro: escribir en el storage dentro
+    // de él hacía que React lo ejecutara dos veces en modo estricto.
+    const updatedXp = data.newTotalXp ?? (userData?.xp ?? 0) + gained;
+    const updatedLevel = data.newLevel ?? userData?.level;
 
-      const updatedXp = data.newTotalXp ?? (prev.xp ?? 0) + gained;
-      const updatedLevel = data.newLevel ?? prev.level;
-
-      persistUserPatch({ xp: updatedXp, level: updatedLevel });
-      return { ...prev, xp: updatedXp, level: updatedLevel };
-    });
+    setUserData((prev) => (prev ? { ...prev, xp: updatedXp, level: updatedLevel } : prev));
+    persistUserPatch({ xp: updatedXp, level: updatedLevel });
   };
 
   const handleRouteGenerated = async () => {
@@ -304,16 +303,13 @@ const StudentDashboard = () => {
         );
       case 'analytics':
         return <AnalyticsDashboard userData={user} />;
-      case 'perfil':
+      case 'crear-ruta':
         return (
-          <StudentProfile
-            userData={user}
-            onPhotoUpdate={handleUpdateUserPhoto}
-            onProfileUpdate={handleProfileUpdate}
+          <RouteGenerator
+            onBack={() => setActiveTab('mis-rutas')}
+            onRouteGenerated={handleRouteGenerated}
           />
         );
-      case 'crear-ruta':
-        return <RouteGenerator onBack={() => setActiveTab('mis-rutas')} />;
       case 'detalle-ruta':
         return (
           <RouteDetails
@@ -428,6 +424,7 @@ const StudentDashboard = () => {
             setActiveModuleForChat(null);
             setShowChat(true);
           }}
+          aria-label="Abrir el tutor IA"
           className="fixed bottom-8 right-8 bg-slate-900 dark:bg-white text-white dark:text-slate-900 p-4 rounded-full shadow-2xl shadow-slate-900/50 hover:scale-110 transition-transform z-50 flex items-center justify-center group"
         >
           <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>

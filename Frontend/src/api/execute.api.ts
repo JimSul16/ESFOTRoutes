@@ -8,5 +8,3 @@ export const runCode = async (payload: ExecuteCodePayload): Promise<ExecuteCodeR
   const response = await httpClient.post<ExecuteCodeResponse>('/execute/run', payload);
   return response.data;
 };
-
-export const executeCode = runCode;

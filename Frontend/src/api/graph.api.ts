@@ -2,6 +2,7 @@ import httpClient from './httpClient';
 import type {
   GraphModule,
   GraphRecommendation,
+  GraphTopic,
   PersonalizedRouteResult,
   SelfDiagnosis,
   SelfDiagnosisResult,
@@ -49,6 +50,19 @@ export const getGraphRecommendations = async (): Promise<GraphRecommendation[]> 
     '/graph/recommendations'
   );
   return response.data.recommendations;
+};
+
+/**
+ * Temas curriculares que cubre un módulo de una ruta.
+ *
+ * El grafo es quien sabe qué temas pertenecen a cada módulo: el frontend no
+ * los conoce y, por eso, no podía activar el GraphRAG del chat.
+ */
+export const getModuleTopics = async (moduleId: string): Promise<GraphTopic[]> => {
+  const response = await httpClient.get<{ success: boolean; topics: GraphTopic[] }>(
+    `/graph/module/${moduleId}/topics`
+  );
+  return response.data.topics ?? [];
 };
 
 /** Subgrafo local de un tema, usado como contexto GraphRAG por el chat. */

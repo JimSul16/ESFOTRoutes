@@ -3,7 +3,8 @@ import {
   getSubjectTopicsWithPrereqs,
   saveUserSelfDiagnosis,
   getCrossCurricularRecommendations,
-  getTopicContextForChat
+  getTopicContextForChat,
+  getModuleTopicsByModuleId
 } from '../services/knowledgeGraph.service.js';
 import { generateAndPersistAdaptiveRoute } from '../services/graphAlgorithm.js';
 
@@ -107,6 +108,24 @@ export const getRecommendations = async (req, res) => {
   } catch (error) {
     console.error('Error en getRecommendations:', error);
     return res.status(500).json({ success: false, error: 'Error al consultar recomendaciones.' });
+  }
+};
+
+/**
+ * Temas curriculares que cubre un módulo de una ruta.
+ * GET /api/graph/module/:moduleId/topics
+ *
+ * El frontend lo usa para derivar el `topicId` que activa el GraphRAG del
+ * chat: sin él, el tutor recibía el contexto global débil.
+ */
+export const getModuleTopics = async (req, res) => {
+  try {
+    const { moduleId } = req.params;
+    const topics = await getModuleTopicsByModuleId(moduleId);
+    return res.json({ success: true, topics });
+  } catch (error) {
+    console.error(`Error en getModuleTopics para ${req.params.moduleId}:`, error);
+    return res.status(500).json({ success: false, error: 'Error al consultar los temas del módulo.' });
   }
 };
 

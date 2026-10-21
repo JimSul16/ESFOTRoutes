@@ -140,7 +140,14 @@ export interface Module {
   /** Orden dentro de la ruta (columna `position`). */
   position?: number;
   routeId?: string;
-  completed?: boolean;
+  /**
+   * ¿El estudiante superó el módulo?
+   *
+   * Ojo: el backend escribe `isPassed` (columna `ModuleProgress.isPassed`),
+   * no `completed`. Antes el frontend leía `m.completed`, que nunca venía:
+   * el contador de módulos completados del panel de analítica salía siempre
+   * en 0.
+   */
   isPassed?: boolean;
   score?: number | null;
   /** El backend hace `JOIN Resource r`, así que son filas completas. */
@@ -255,23 +262,6 @@ export interface Subject {
   topicCount?: number;
 }
 
-export interface TopicPrerequisite {
-  targetId: string;
-  strength: 'HARD' | 'SOFT';
-}
-
-export interface Topic {
-  id: string;
-  title: string;
-  description?: string;
-  level?: number;
-  difficulty?: number;
-  prerequisites?: TopicPrerequisite[];
-  resources?: Resource[];
-  moduleId?: string;
-  moduleName?: string;
-}
-
 export interface SelfDiagnosis {
   topicId: string;
   level: number; // 1–5
@@ -334,7 +324,14 @@ export interface GraphRecommendation {
   id: string;
   name: string;
   description?: string | null;
-  /** Afinidad 0-100 (`SIMILAR_TO.score`). */
+  /**
+   * Afinidad 0-100.
+   *
+   * En la base de datos `SIMILAR_TO.score` se guarda en escala 0-1, pero el
+   * servicio lo normaliza a 0-100 antes de devolverlo (ver
+   * `normalizeAffinityScore` en `knowledgeGraph.service.js`). Antes se
+   * devolvía 0.85 y el frontend pintaba "1% de afinidad".
+   */
   matchScore?: number | null;
   reason?: string | null;
 }
@@ -351,6 +348,40 @@ export interface TopicGraphContext {
   unlocks?: string[];
   resources?: { title: string; url: string; type: string }[];
 }
+
+// ─── Contrato de red: lo que el backend envía realmente ─────────────────────
+// En Turso (SQLite) los `id` son `INTEGER`, así que llegan como **número**.
+// Los tipos de arriba (`LearningRoute`, `Module`, `Resource`…) describen la
+// forma YA NORMALIZADA que entrega la capa API (`src/api/normalize.ts`); estos
+// son los tipos crudos del cable.
+//
+// Antes el frontend tipaba la respuesta del backend directamente como
+// `LearningRoute` (con `id: string`), así que el tipo mentía y el runtime
+// comparaba `number` con `string`.
+
+export type RawResource = Omit<Resource, 'id'> & { id: number | string };
+
+export type RawModule = Omit<Module, 'id' | 'routeId' | 'resources'> & {
+  id: number | string;
+  routeId?: number | string;
+  resources?: RawResource[];
+};
+
+export type RawEnrollment = Omit<Enrollment, 'id' | 'userId' | 'routeId'> & {
+  id: number | string;
+  userId?: number | string;
+  routeId?: number | string;
+};
+
+export type RawLearningRoute = Omit<
+  LearningRoute,
+  'id' | 'authorId' | 'modules' | 'enrollments'
+> & {
+  id: number | string;
+  authorId?: number | string;
+  modules?: RawModule[];
+  enrollments?: RawEnrollment[];
+};
 
 // ─── Chat & Assessment ────────────────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 import { turso } from '../config/turso.js';
+import { parseId } from '../utils/index.js';
 
 export const createResource = async (req, res) => {
   try {
@@ -7,6 +8,15 @@ export const createResource = async (req, res) => {
 
     if (!title || !type || !url) {
       return res.status(400).json({ error: 'Título, tipo y URL son obligatorios.' });
+    }
+
+    // El `type` tiene un CHECK en SQLite: sin validarlo, un valor inválido
+    // reventaba con un 500 de constraint en vez de un 400 con mensaje claro.
+    const ALLOWED_TYPES = ['LINK', 'PDF', 'VIDEO', 'IMAGE', 'DOCUMENT'];
+    if (!ALLOWED_TYPES.includes(type)) {
+      return res.status(400).json({
+        error: `Tipo no válido. Valores admitidos: ${ALLOWED_TYPES.join(', ')}.`
+      });
     }
 
     await turso.execute({
@@ -44,17 +54,29 @@ export const updateResource = async (req, res) => {
     const { id } = req.params;
     const { title, description, type, url } = req.body;
 
-    const existing = await turso.execute({ sql: `SELECT id FROM Resource WHERE id = ?`, args: [parseInt(id)] });
+    const resourceId = parseId(id);
+    if (resourceId === null) {
+      return res.status(400).json({ error: 'El identificador del recurso no es válido.' });
+    }
+
+    const existing = await turso.execute({ sql: `SELECT id FROM Resource WHERE id = ?`, args: [resourceId] });
     if (!existing.rows.length) {
       return res.status(404).json({ error: 'Recurso no encontrado.' });
     }
 
+    const ALLOWED_TYPES = ['LINK', 'PDF', 'VIDEO', 'IMAGE', 'DOCUMENT'];
+    if (type && !ALLOWED_TYPES.includes(type)) {
+      return res.status(400).json({
+        error: `Tipo no válido. Valores admitidos: ${ALLOWED_TYPES.join(', ')}.`
+      });
+    }
+
     await turso.execute({
       sql: `UPDATE Resource SET title = ?, description = ?, type = ?, url = ?, updatedAt = datetime('now') WHERE id = ?`,
-      args: [title, description || null, type, url, parseInt(id)]
+      args: [title, description || null, type, url, resourceId]
     });
 
-    const result = await turso.execute({ sql: `SELECT * FROM Resource WHERE id = ?`, args: [parseInt(id)] });
+    const result = await turso.execute({ sql: `SELECT * FROM Resource WHERE id = ?`, args: [resourceId] });
     return res.status(200).json({ message: 'Recurso actualizado', resource: result.rows[0] });
   } catch (error) {
     return res.status(500).json({ error: 'Error al actualizar el recurso.' });
@@ -65,12 +87,17 @@ export const deleteResource = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const existing = await turso.execute({ sql: `SELECT id FROM Resource WHERE id = ?`, args: [parseInt(id)] });
+    const resourceId = parseId(id);
+    if (resourceId === null) {
+      return res.status(400).json({ error: 'El identificador del recurso no es válido.' });
+    }
+
+    const existing = await turso.execute({ sql: `SELECT id FROM Resource WHERE id = ?`, args: [resourceId] });
     if (!existing.rows.length) {
       return res.status(404).json({ error: 'Recurso no encontrado.' });
     }
 
-    await turso.execute({ sql: `DELETE FROM Resource WHERE id = ?`, args: [parseInt(id)] });
+    await turso.execute({ sql: `DELETE FROM Resource WHERE id = ?`, args: [resourceId] });
     return res.status(200).json({ message: 'Recurso eliminado correctamente.' });
   } catch (error) {
     return res.status(500).json({ error: 'Error al eliminar el recurso.' });

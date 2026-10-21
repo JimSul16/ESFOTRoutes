@@ -5,6 +5,7 @@ import { changePassword, forgotPassword, getSessions, updateProfile } from '../.
 import { uploadProfileImage } from '../../../api/upload.api';
 import { getApiErrorMessage } from '../../../api/errors';
 import type { SessionEntry, User, UserDashboard } from '../../../types';
+import { levelProgress, XP_PER_LEVEL } from '../../../utils/progress';
 
 export interface StudentProfileProps {
   userData: UserDashboard;
@@ -170,9 +171,13 @@ const StudentProfile = ({ userData, onPhotoUpdate, onProfileUpdate }: StudentPro
     { name: 'Nivel 5', earned: (userData.level || 1) >= 5, icon: '⭐' },
   ];
 
-  const xpForNextLevel = userData.nextRankXp || 1000;
-  const currentLevelXp = userData.xp || 0;
-  const progressPercent = Math.min((currentLevelXp / xpForNextLevel) * 100, 100);
+  // El progreso se mide dentro del nivel actual, no contra el XP total: antes
+  // se comparaba `xp` (total) contra 1 000, así que la barra se quedaba
+  // clavada al 100 % en cuanto el alumno pasaba de nivel.
+  const { xpInLevel, percent: progressPercent } = levelProgress(
+    userData.xp,
+    userData.level
+  );
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300 pb-6">
@@ -238,7 +243,7 @@ const StudentProfile = ({ userData, onPhotoUpdate, onProfileUpdate }: StudentPro
             <div className="space-y-1.5 max-w-md">
               <div className="flex justify-between text-xs font-semibold">
                 <span className="text-surface-500 dark:text-surface-400">Progreso al nivel {(userData.level || 1) + 1}</span>
-                <span className="text-brand-600 dark:text-brand-400 font-mono">{currentLevelXp} / {xpForNextLevel} XP</span>
+                <span className="text-brand-600 dark:text-brand-400 font-mono">{xpInLevel} / {XP_PER_LEVEL} XP</span>
               </div>
               <div className="h-2.5 bg-surface-100 dark:bg-surface-800 rounded-full overflow-hidden">
                 <div

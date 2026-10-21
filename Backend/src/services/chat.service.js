@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { turso } from '../config/turso.js';
 import { prepareResourceForGemini } from './resourceParser.service.js';
 import { getDriver } from './neo4j.service.js';
-import { getTopicContextForChat, markTopicStruggle } from './knowledgeGraph.service.js';
+import { getTopicContextForChat, markTopicStruggle, getModuleTopicsForChat } from './knowledgeGraph.service.js';
 import 'dotenv/config';
 
 export const PRIMARY_MODEL = process.env.GEMINI_PRIMARY_MODEL || 'gemini-3.5-flash';
@@ -85,13 +85,13 @@ export const updateStudentProfile = async (userId, studentMessage, aiMessage, cu
 /**
  * Procesa un mensaje de tutoría aplicando GraphRAG contextual
  */
-export const generateChatResponse = async ({ userId, moduleId, topicId, message, sessionId, user }) => {
+export const generateChatResponse = async ({ userId, moduleId, topicId, routeId, message, sessionId, user }) => {
   // 1. Obtener o crear sesión
   let session;
   if (sessionId) {
     const sResult = await turso.execute({
       sql: `SELECT * FROM ChatSession WHERE id = ? AND userId = ?`,
-      args: [parseInt(sessionId), userId]
+      args: [parseInt(sessionId, 10), userId]
     });
     session = sResult.rows[0];
   }
@@ -99,7 +99,7 @@ export const generateChatResponse = async ({ userId, moduleId, topicId, message,
   if (!session) {
     await turso.execute({
       sql: `INSERT INTO ChatSession (userId, moduleId, title) VALUES (?, ?, 'Sesión de Tutoría IA')`,
-      args: [userId, moduleId ? parseInt(moduleId) : null]
+      args: [userId, moduleId ? parseInt(moduleId, 10) : null]
     });
     const sResult = await turso.execute({
       sql: `SELECT * FROM ChatSession WHERE userId = ? ORDER BY id DESC LIMIT 1`,
@@ -116,21 +116,26 @@ export const generateChatResponse = async ({ userId, moduleId, topicId, message,
 
   // 3. Obtener contexto de material del módulo
   let moduleContext = 'Consulta general del estudiante.';
+  let moduleTitle = null;
+  let moduleRouteId = null;
+
   if (moduleId) {
     const modResult = await turso.execute({
       sql: `SELECT m.*, lr.evaluationRules FROM Module m
             JOIN LearningRoute lr ON lr.id = m.routeId
             WHERE m.id = ?`,
-      args: [parseInt(moduleId)]
+      args: [parseInt(moduleId, 10)]
     });
 
     if (modResult.rows.length) {
       const moduleData = modResult.rows[0];
+      moduleTitle = moduleData.title;
+      moduleRouteId = moduleData.routeId;
       moduleContext = `Módulo: ${moduleData.title}\nDescripción: ${moduleData.description}\nReglas de Evaluación: ${moduleData.evaluationRules || 'Ninguna'}\n\nContenido del material de estudio:\n`;
 
       const resourcesResult = await turso.execute({
         sql: `SELECT r.* FROM Resource r JOIN ModuleResource mr ON mr.resourceId = r.id WHERE mr.moduleId = ?`,
-        args: [parseInt(moduleId)]
+        args: [parseInt(moduleId, 10)]
       });
 
       const parsedResources = await Promise.all(resourcesResult.rows.map(r => prepareResourceForGemini(r)));
@@ -140,23 +145,46 @@ export const generateChatResponse = async ({ userId, moduleId, topicId, message,
     }
   }
 
-  // 4. GraphRAG: Subgrafo específico del tema si se proporciona topicId, o subgrafo global
+  // 4. GraphRAG: subgrafo del tema del módulo.
+  //
+  // BUG 4: el frontend nunca mandaba `topicId`, así que el tutor recibía
+  // siempre el contexto global débil y la detección de bloqueo
+  // (`markTopicStruggle`) nunca se ejecutaba. Ahora el tema se resuelve en
+  // dos niveles:
+  //   1) el `topicId` que envía el cliente, si lo hay;
+  //   2) el grafo: los `Module` runtime enlazan con sus `Topic` curriculares
+  //      mediante `CONTAINS_TOPIC`, así que el módulo basta para saber de qué
+  //      temas trata.
+  let resolvedTopicId = topicId ? String(topicId) : null;
+  let topicGraph = null;
+
+  if (resolvedTopicId) {
+    topicGraph = await getTopicContextForChat(resolvedTopicId);
+  }
+
+  if (!topicGraph && moduleTitle && (moduleRouteId || routeId)) {
+    // `moduleRouteId` (el de Turso) es el dato fiable; el `routeId` del
+    // cliente solo acota la búsqueda en el grafo.
+    const moduleTopics = await getModuleTopicsForChat(moduleRouteId ?? routeId, moduleTitle);
+    if (moduleTopics.length > 0) {
+      resolvedTopicId = moduleTopics[0].id;
+      topicGraph = await getTopicContextForChat(resolvedTopicId);
+    }
+  }
+
   let graphContext = '';
-  if (topicId) {
-    const topicGraph = await getTopicContextForChat(topicId);
-    if (topicGraph) {
-      const prereqsList = topicGraph.prerequisites.map(p => `${p.name} (${p.strength})`).join(', ') || 'Ninguno';
-      const unlocksList = topicGraph.unlocks.join(', ') || 'Conceptos terminales';
-      graphContext = `
+  if (topicGraph) {
+    const prereqsList = topicGraph.prerequisites.map(p => `${p.name} (${p.strength})`).join(', ') || 'Ninguno';
+    const unlocksList = topicGraph.unlocks.join(', ') || 'Conceptos terminales';
+    graphContext = `
 [CONTEXTO ESPECÍFICO DEL GRAFO DE CONOCIMIENTO (GraphRAG)]
 - Materia: ${topicGraph.subjectName} | Módulo: ${topicGraph.moduleName}
 - Tema Actual: ${topicGraph.name} (${topicGraph.difficulty})
 - Prerrequisitos que el estudiante debió dominar antes: ${prereqsList}
 - Temas que este concepto desbloquea en la carrera: ${unlocksList}
 `;
-    }
   } else {
-    // Si no hay topicId, extraer resumen del grafo global
+    // Si no hay tema resoluble, extraer resumen del grafo global
     try {
       const driver = getDriver();
       if (driver) {
@@ -235,8 +263,8 @@ Te sugiero repasar los recursos didácticos del módulo y verificar cada paso co
   // 8. Detección automática de dificultades si el estudiante manifiesta bloqueo
   const struggleKeywords = ['no entiendo nada', 'estoy confundido', 'no puedo resolver', 'se me hace muy difícil', 'no comprendo'];
   const lowerMsg = message.toLowerCase();
-  if (topicId && struggleKeywords.some(kw => lowerMsg.includes(kw))) {
-    markTopicStruggle(userId, topicId, 'Estudiante reportó dificultad o confusión directa en chat.');
+  if (resolvedTopicId && struggleKeywords.some(kw => lowerMsg.includes(kw))) {
+    markTopicStruggle(userId, resolvedTopicId, 'Estudiante reportó dificultad o confusión directa en chat.');
   }
 
   // Actualizar perfil de aprendizaje
@@ -255,7 +283,7 @@ export const generateModuleAssessmentService = async (moduleId, type = 'completa
   // Verificar caché
   const existingAssessmentRes = await turso.execute({
     sql: `SELECT content FROM ModuleAssessment WHERE moduleId = ? AND type = ? ORDER BY createdAt DESC LIMIT 1`,
-    args: [parseInt(moduleId), type]
+    args: [parseInt(moduleId, 10), type]
   });
 
   if (existingAssessmentRes.rows.length > 0) {
@@ -268,7 +296,7 @@ export const generateModuleAssessmentService = async (moduleId, type = 'completa
     sql: `SELECT m.*, lr.evaluationRules FROM Module m
           JOIN LearningRoute lr ON lr.id = m.routeId
           WHERE m.id = ?`,
-    args: [parseInt(moduleId)]
+    args: [parseInt(moduleId, 10)]
   });
 
   if (!modResult.rows.length) {
@@ -278,7 +306,7 @@ export const generateModuleAssessmentService = async (moduleId, type = 'completa
   const moduleData = modResult.rows[0];
   const resourcesResult = await turso.execute({
     sql: `SELECT r.* FROM Resource r JOIN ModuleResource mr ON mr.resourceId = r.id WHERE mr.moduleId = ?`,
-    args: [parseInt(moduleId)]
+    args: [parseInt(moduleId, 10)]
   });
 
   let contextText = `Módulo: ${moduleData.title}\nReglas de Evaluación: ${moduleData.evaluationRules || 'Ninguna'}\n\nContenido de los recursos:\n`;
@@ -327,7 +355,7 @@ export const generateModuleAssessmentService = async (moduleId, type = 'completa
 
   await turso.execute({
     sql: `INSERT INTO ModuleAssessment (moduleId, type, content) VALUES (?, ?, ?)`,
-    args: [parseInt(moduleId), type, JSON.stringify(finalJson)]
+    args: [parseInt(moduleId, 10), type, JSON.stringify(finalJson)]
   });
 
   return finalJson;

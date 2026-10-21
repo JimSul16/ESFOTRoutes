@@ -4,8 +4,23 @@
  * Usa una BD SQLite en memoria, así que no depende del estado de `dev.db`.
  * Regresión: el endpoint no devolvía `enrollments` ni `progress`, por lo que el
  * frontend leía `enrollments[0].progress` y mostraba siempre 0%.
+ *
+ * El driver de Neo4j se mockea: sin esto, `createRoute` abría una conexión
+ * real a AuraDB y el proceso de Jest no podía cerrar solo ("A worker process
+ * has failed to exit gracefully").
  */
 process.env.TURSO_DATABASE_URL = ':memory:';
+
+import { jest } from '@jest/globals';
+
+jest.unstable_mockModule('../src/services/neo4j.service.js', () => ({
+  syncRouteToGraph: jest.fn(),
+  deleteRouteFromGraph: jest.fn(),
+  markModuleAsCompleted: jest.fn(),
+  markModuleStruggle: jest.fn(),
+  getDriver: jest.fn(() => null),
+  closeDriver: jest.fn(),
+}));
 
 const { turso } = await import('../src/config/turso.js');
 const { runMigrations } = await import('../src/db/migrate.js');

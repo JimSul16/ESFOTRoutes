@@ -5,11 +5,16 @@ import type { Difficulty } from '../../../types';
 
 export interface RouteGeneratorProps {
   onBack: () => void;
+  /**
+   * Avisa al panel de que hay una ruta nueva: sin esto, la ruta no aparece
+   * en "Explorar rutas" hasta recargar la página.
+   */
+  onRouteGenerated?: () => void;
 }
 
 const DIFFICULTIES = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'] as const;
 
-const RouteGenerator = ({ onBack }: RouteGeneratorProps) => {
+const RouteGenerator = ({ onBack, onRouteGenerated }: RouteGeneratorProps) => {
   const [topic, setTopic] = useState('');
   const [difficulty, setDifficulty] = useState<Difficulty>('BEGINNER');
   const [additionalContext, setAdditionalContext] = useState('');
@@ -61,6 +66,9 @@ const RouteGenerator = ({ onBack }: RouteGeneratorProps) => {
       await generateRoute(formData);
 
       setSuccess(true);
+      // Avisa al panel para que refresque el catálogo: sin esto la ruta
+      // nueva no aparecía hasta recargar la página.
+      onRouteGenerated?.();
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, 'Error al generar la ruta con IA.'));
     } finally {
@@ -89,8 +97,9 @@ const RouteGenerator = ({ onBack }: RouteGeneratorProps) => {
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-10">
       <div className="flex items-center gap-4 mb-8">
-        <button 
+        <button
           onClick={onBack}
+          aria-label="Volver a mis rutas"
           className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
@@ -181,8 +190,9 @@ const RouteGenerator = ({ onBack }: RouteGeneratorProps) => {
                   cursor-pointer transition-colors border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-[#12141c]"
               />
               {referenceFile && (
-                <button 
-                  type="button" 
+                <button
+                  type="button"
+                  aria-label="Quitar el archivo de referencia"
                   onClick={() => {
                     setReferenceFile(null);
                     if (fileInputRef.current) fileInputRef.current.value = "";

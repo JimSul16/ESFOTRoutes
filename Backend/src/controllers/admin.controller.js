@@ -1,6 +1,7 @@
 import bcrypt from 'bcrypt';
 import { turso } from '../config/turso.js';
 import { clearLockoutState } from '../services/auth.service.js';
+import { parseId } from '../utils/index.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const getUserRoles = async (userId) => {
@@ -70,6 +71,13 @@ export const updateUser = async (req, res) => {
     const { id } = req.params;
     const { name, email, password, roleName } = req.body;
 
+    // `parseInt('abc')` → `NaN`, que libSQL no puede enlazar: la consulta
+    // reventaba y el endpoint devolvía 500 en vez de 400.
+    const userId = parseId(id);
+    if (userId === null) {
+      return res.status(400).json({ error: 'El identificador de usuario no es válido.' });
+    }
+
     let updateSql = `UPDATE User SET name = ?, email = ?, updatedAt = datetime('now')`;
     let updateArgs = [name, email];
 
@@ -78,9 +86,9 @@ export const updateUser = async (req, res) => {
       updateSql += `, password = ?`;
       updateArgs.push(hashedPassword);
     }
-    
+
     updateSql += ` WHERE id = ?`;
-    updateArgs.push(parseInt(id));
+    updateArgs.push(userId);
 
     await turso.execute({
       sql: updateSql,
@@ -93,16 +101,16 @@ export const updateUser = async (req, res) => {
         const roleId = roleResult.rows[0].id;
         await turso.execute({
           sql: `DELETE FROM UserRole WHERE userId = ?`,
-          args: [parseInt(id)]
+          args: [userId]
         });
         await turso.execute({
           sql: `INSERT INTO UserRole (userId, roleId) VALUES (?, ?)`,
-          args: [parseInt(id), roleId]
+          args: [userId, roleId]
         });
       }
     }
 
-    const result = await turso.execute({ sql: `SELECT id, name, email FROM User WHERE id = ?`, args: [parseInt(id)] });
+    const result = await turso.execute({ sql: `SELECT id, name, email FROM User WHERE id = ?`, args: [userId] });
     res.json({ message: 'Usuario actualizado', user: result.rows[0] });
   } catch (error) {
     res.status(500).json({ error: 'Error al actualizar usuario' });
@@ -113,7 +121,12 @@ export const toggleUserStatus = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await turso.execute({ sql: `SELECT id, isActive FROM User WHERE id = ?`, args: [parseInt(id)] });
+    const userId = parseId(id);
+    if (userId === null) {
+      return res.status(400).json({ error: 'El identificador de usuario no es válido.' });
+    }
+
+    const result = await turso.execute({ sql: `SELECT id, isActive FROM User WHERE id = ?`, args: [userId] });
     if (!result.rows.length) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
@@ -122,7 +135,7 @@ export const toggleUserStatus = async (req, res) => {
 
     await turso.execute({
       sql: `UPDATE User SET isActive = ?, updatedAt = datetime('now') WHERE id = ?`,
-      args: [newStatus, parseInt(id)]
+      args: [newStatus, userId]
     });
 
     res.json({ message: `Usuario ${newStatus ? 'activado' : 'desactivado'}` });
@@ -135,14 +148,19 @@ export const unlockUser = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await turso.execute({ sql: `SELECT id, name, email FROM User WHERE id = ?`, args: [parseInt(id)] });
+    const userId = parseId(id);
+    if (userId === null) {
+      return res.status(400).json({ error: 'El identificador de usuario no es válido.' });
+    }
+
+    const result = await turso.execute({ sql: `SELECT id, name, email FROM User WHERE id = ?`, args: [userId] });
     if (!result.rows.length) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
     // Reinicia TODO el estado de bloqueo (isLocked, lockoutUntil,
     // lockoutCount, failedAttempts y otpAttempts).
-    await clearLockoutState(parseInt(id));
+    await clearLockoutState(userId);
 
     res.json({ message: `Cuenta de ${result.rows[0].email} desbloqueada exitosamente.` });
   } catch (error) {

@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { turso } from '../config/turso.js';
 import { registerUser, generateOTP, verifyOTP, clearLockoutState, registerFailedOtpAttempt, getAdminEmails } from '../services/auth.service.js';
 import { sendVerificationEmail, sendPasswordResetEmail, sendOTPEmail, sendAdminLockoutAlertEmail } from '../services/email.service.js';
+import { escapeHtml, isValidEmail } from '../utils/index.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -207,15 +208,27 @@ export const register = async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Todos los campos son obligatorios' });
     }
-    const isAllowedDomain = email.endsWith('@epn.edu.ec') || email.endsWith('@gmail.com');
+
+    // Un `email` que no sea string reventaba con un TypeError (500), y el
+    // dominio se comparaba sin normalizar: `User@EPN.EDU.EC` se rechazaba.
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'El correo electrónico no tiene un formato válido.' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const isAllowedDomain =
+      normalizedEmail.endsWith('@epn.edu.ec') || normalizedEmail.endsWith('@gmail.com');
     if (!isAllowedDomain) {
       return res.status(400).json({ error: 'Solo se permiten correos institucionales (@epn.edu.ec) o @gmail.com.' });
     }
-    if (password.length < 8) {
+
+    // Un `password` numérico pasaba la validación (`.length` es `undefined`,
+    // y `undefined < 8` es `false`) y reventaba después en `bcrypt.hash`.
+    if (typeof password !== 'string' || password.length < 8) {
       return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
     }
 
-    const user = await registerUser({ name, email, password });
+    const user = await registerUser({ name, email: normalizedEmail, password });
 
     try {
       await sendVerificationEmail(user.email, user.verificationToken);
@@ -439,7 +452,7 @@ export const resetPassword = async (req, res) => {
     const { token }       = req.params;
     const { newPassword } = req.body;
 
-    if (!newPassword || newPassword.length < 8) {
+    if (typeof newPassword !== 'string' || !newPassword || newPassword.length < 8) {
       return res.status(400).json({ message: 'La nueva contraseña debe tener al menos 8 caracteres' });
     }
 
@@ -618,7 +631,7 @@ export const changePassword = async (req, res) => {
     const userId          = req.user.id;
     const { currentPassword, newPassword } = req.body;
 
-    if (!currentPassword || !newPassword) {
+    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || !currentPassword || !newPassword) {
       return res.status(400).json({ message: 'La contraseña actual y la nueva son obligatorias.' });
     }
 
@@ -664,6 +677,10 @@ export const changePassword = async (req, res) => {
  */
 export const renderUnlockAccountForm = (req, res) => {
   const { token } = req.params;
+  // El token viene de la URL, o sea lo controla el cliente: sin escapar se
+  // convertía en HTML ejecutable (XSS reflejado). Además se recorta a un
+  // tamaño razonable para no reflejar un payload enorme en la página.
+  const safeToken = escapeHtml(String(token ?? '').slice(0, 128));
   res.send(`
     <!DOCTYPE html>
     <html lang="es">
@@ -676,7 +693,7 @@ export const renderUnlockAccountForm = (req, res) => {
       <div style="max-width: 480px; margin: auto; background: white; padding: 35px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e2e8f0;">
         <h2>Confirmar Desbloqueo</h2>
         <p>¿Estás seguro de que deseas reactivar esta cuenta?</p>
-        <form method="POST" action="/api/auth/unlock-account/${token}">
+        <form method="POST" action="/api/auth/unlock-account/${safeToken}">
           <button type="submit" style="background-color: #2563eb; color: white; padding: 10px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; border: none;">
             Desbloquear Cuenta
           </button>
@@ -726,19 +743,8 @@ export const unlockAccountViaToken = async (req, res) => {
 
     console.log(`🔓 Cuenta [${user.email}] desbloqueada con éxito por el Administrador.`);
 
-    const escapeHtml = (str) => {
-      if (!str) return '';
-      return String(str).replace(/[&<>"']/g, (match) => {
-        const escape = {
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&#039;'
-        };
-        return escape[match];
-      });
-    };
+    // `escapeHtml` vive en `src/utils/index.js` (se usa también para el
+    // token de la URL en `renderUnlockAccountForm`).
     const safeUserName = escapeHtml(user.name);
     const safeUserEmail = escapeHtml(user.email);
 

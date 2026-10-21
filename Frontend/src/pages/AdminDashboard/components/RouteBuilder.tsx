@@ -420,6 +420,7 @@ const { register, handleSubmit, watch, setValue, formState: { errors } } = useFo
 
                   <button 
                     type="button" 
+                    aria-label="Eliminar módulo"
                     onClick={() => removeModule(index)}
                     className="flex-shrink-0 self-start text-surface-500 hover:text-rose-500 bg-white dark:bg-surface-900 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-lg transition-colors border border-surface-200 dark:border-surface-700 hover:border-rose-500/30"
                   >

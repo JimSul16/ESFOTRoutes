@@ -7,7 +7,8 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "seed:graph": "node src/seeds/seedKnowledgeGraph.js"
+    "seed:graph": "node src/seeds/seedKnowledgeGraph.js",
+    "resync:graph": "node src/scripts/resync-graph.mjs"
   },
   "keywords": [],
   "author": "",

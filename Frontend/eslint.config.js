@@ -14,8 +14,12 @@ import reactRefresh from 'eslint-plugin-react-refresh';
  *   1. Bajar TypeScript a la rama 5.x, o
  *   2. Esperar a que typescript-eslint soporte TS 7.
  *
- * En cualquiera de los dos casos basta descomentar el bloque `typescript` de
- * abajo y añadir `typescript-eslint` a devDependencies.
+ * ── MIENTRAS TANTO ──────────────────────────────────────────────────────────
+ * El lint del código de la aplicación lo hace **oxlint** (`npm run lint` →
+ * `eslint . && oxlint`), que parsea TypeScript de forma nativa y cubre los
+ * 92 ficheros de `src/` con las reglas de `react`, `react-hooks` y `jsx-a11y`.
+ * Este config de ESLint solo cubre los ficheros de configuración de la raíz
+ * (que sí son JavaScript plano).
  */
 export default [
   { ignores: ['dist', 'node_modules', 'index_test_auth.html'] },

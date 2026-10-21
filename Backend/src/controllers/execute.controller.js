@@ -13,7 +13,12 @@ export const executeCode = async (req, res) => {
       javascript: { lang: "nodejs", version: "3" }
     };
 
-    const target = languageMap[language] || languageMap["python"];
+    // `Object.hasOwn` en vez de `languageMap[language] || ...`: con el acceso
+    // normal, `languageMap['constructor']` o `['__proto__']` devolvían un
+    // valor heredado (truthy) y se enviaba `language: undefined` a JDoodle.
+    const target = Object.hasOwn(languageMap, language)
+      ? languageMap[language]
+      : languageMap.python;
 
     const response = await fetch("https://api.jdoodle.com/v1/execute", {
       method: "POST",

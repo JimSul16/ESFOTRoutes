@@ -1,8 +1,20 @@
 import { turso } from '../config/turso.js';
 import { syncRouteToGraph, deleteRouteFromGraph, markModuleAsCompleted, markModuleStruggle } from '../services/neo4j.service.js';
+import { syncEnrollmentToGraph } from '../services/knowledgeGraph.service.js';
 import { executeWithGeminiCascade } from '../services/chat.service.js';
+import { parseId } from '../utils/index.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Convierte el `:id` de la URL en un entero de ruta válido.
+ *
+ * `parseInt('abc')` devuelve `NaN`, y Turso/libSQL no puede enlazar `NaN`:
+ * la consulta reventaba y el endpoint respondía 500 en lugar de 400.
+ *
+ * @returns {number|null} El id, o `null` si no es un entero válido.
+ */
+const parseRouteId = (raw) => parseId(raw);
 
 // Materias del grafo de conocimiento (id en Neo4j → nombre legible).
 const SUBJECT_NAMES = {
@@ -151,8 +163,10 @@ export const createRoute = async (req, res) => {
     }
 
     const fullRoute = await buildFullRoute(routeId);
-    // Sincronizar al Grafo de Conocimiento
-    syncRouteToGraph(routeId, title, category, fullRoute?.modules || []);
+    // Sincronizar al Grafo de Conocimiento. Se espera: sin `await` la
+    // respuesta HTTP salía antes de que el grafo estuviera sincronizado y
+    // un fallo del grafo pasaba desapercibido.
+    await syncRouteToGraph(routeId, title, category, fullRoute?.modules || []);
 
     return res.status(201).json({ message: 'Ruta de aprendizaje creada exitosamente', route: fullRoute });
   } catch (error) {
@@ -178,7 +192,11 @@ export const getRoutes = async (req, res) => {
 export const getRouteById = async (req, res) => {
   try {
     const userId = req.user?.id || null;
-    const route = await buildFullRoute(parseInt(req.params.id), userId);
+    const routeId = parseRouteId(req.params.id);
+    if (routeId === null) {
+      return res.status(400).json({ error: 'El identificador de la ruta no es válido.' });
+    }
+    const route = await buildFullRoute(routeId, userId);
     if (!route) return res.status(404).json({ error: 'Ruta no encontrada' });
     return res.json(route);
   } catch (error) {
@@ -189,14 +207,16 @@ export const getRouteById = async (req, res) => {
 
 export const deleteRoute = async (req, res) => {
   try {
-    const { id } = req.params;
-    const routeId = parseInt(id);
+    const routeId = parseRouteId(req.params.id);
+    if (routeId === null) {
+      return res.status(400).json({ error: 'El identificador de la ruta no es válido.' });
+    }
 
     const existing = await turso.execute({ sql: `SELECT id FROM LearningRoute WHERE id = ?`, args: [routeId] });
     if (!existing.rows.length) return res.status(404).json({ error: 'Ruta no encontrada.' });
 
     await turso.execute({ sql: `DELETE FROM LearningRoute WHERE id = ?`, args: [routeId] });
-    deleteRouteFromGraph(routeId);
+    await deleteRouteFromGraph(routeId);
 
     return res.status(200).json({ message: 'Ruta eliminada correctamente.' });
   } catch (error) {
@@ -207,8 +227,10 @@ export const deleteRoute = async (req, res) => {
 
 export const updateRoute = async (req, res) => {
   try {
-    const { id } = req.params;
-    const routeId = parseInt(id);
+    const routeId = parseRouteId(req.params.id);
+    if (routeId === null) {
+      return res.status(400).json({ error: 'El identificador de la ruta no es válido.' });
+    }
     const { title, description, category, estimatedTime, difficulty, evaluationRules, modules, imageUrl, subjectId } = req.body;
 
     const existing = await turso.execute({ sql: `SELECT id FROM LearningRoute WHERE id = ?`, args: [routeId] });
@@ -225,23 +247,57 @@ export const updateRoute = async (req, res) => {
     });
 
     if (modules) {
-      // Borrar módulos viejos (CASCADE borrará ModuleResources)
-      await turso.execute({ sql: `DELETE FROM Module WHERE routeId = ?`, args: [routeId] });
+      // ── Actualización de módulos SIN perder el progreso de los alumnos ──────
+      // Antes se hacía `DELETE FROM Module WHERE routeId = ?` y se reinsertaba
+      // todo. Como `ModuleProgress`, `ModuleAssessment` y `ModuleResource`
+      // tienen `ON DELETE CASCADE`, ese borrado **destruía el progreso de
+      // todos los estudiantes** que cursaban la ruta (verificado en ejecución:
+      // `ModuleProgress` 1 → 0).
+      //
+      // Ahora: se conservan los módulos existentes (emparejando por `id`),
+      // se actualizan o se insertan los nuevos, y solo se borran los que
+      // desaparecen **y** no tienen progreso de ningún alumno.
+      const existingModules = await turso.execute({
+        sql: `SELECT id, title, description, position FROM Module WHERE routeId = ? ORDER BY position ASC`,
+        args: [routeId]
+      });
+
+      const keptIds = new Set();
 
       for (let i = 0; i < modules.length; i++) {
         const mod = modules[i];
-        await turso.execute({
-          sql: `INSERT INTO Module (title, description, position, routeId) VALUES (?, ?, ?, ?)`,
-          args: [mod.title, mod.description || null, i + 1, routeId]
-        });
+        const position = i + 1;
+        // El panel de admin no manda `id` (el tipo `RouteModuleInput` no lo
+        // tiene), así que se empareja también por título: así el módulo
+        // conserva su id y el progreso de los alumnos.
+        const existing =
+          existingModules.rows.find((m) => m.id === mod.id) ??
+          existingModules.rows.find((m) => m.title === mod.title && !keptIds.has(m.id));
 
-        const modResult = await turso.execute({
-          sql: `SELECT id FROM Module WHERE routeId = ? ORDER BY id DESC LIMIT 1`,
-          args: [routeId]
-        });
-        const moduleId = modResult.rows[0].id;
+        let moduleId;
+        if (existing) {
+          // Se actualiza en el sitio: el `id` se conserva y con él el
+          // `ModuleProgress` de los alumnos.
+          await turso.execute({
+            sql: `UPDATE Module SET title = ?, description = ?, position = ?, updatedAt = datetime('now') WHERE id = ?`,
+            args: [mod.title, mod.description || null, position, existing.id]
+          });
+          moduleId = existing.id;
+        } else {
+          await turso.execute({
+            sql: `INSERT INTO Module (title, description, position, routeId) VALUES (?, ?, ?, ?)`,
+            args: [mod.title, mod.description || null, position, routeId]
+          });
+          const modResult = await turso.execute({
+            sql: `SELECT id FROM Module WHERE routeId = ? AND position = ? LIMIT 1`,
+            args: [routeId, position]
+          });
+          moduleId = modResult.rows[0]?.id;
+        }
 
-        if (mod.resourceIds?.length) {
+        keptIds.add(moduleId);
+
+        if (moduleId && mod.resourceIds?.length) {
           for (let j = 0; j < mod.resourceIds.length; j++) {
             await turso.execute({
               sql: `INSERT OR IGNORE INTO ModuleResource (moduleId, resourceId, position) VALUES (?, ?, ?)`,
@@ -250,10 +306,33 @@ export const updateRoute = async (req, res) => {
           }
         }
       }
+
+      // Los módulos que han desaparecido de la edición solo se borran si
+      // ningún alumno tiene progreso en ellos: si lo tienen, se conservan
+      // (y quedan "huérfanos" de la edición, pero sin perder el trabajo).
+      for (const old of existingModules.rows) {
+        if (keptIds.has(old.id)) continue;
+
+        const withProgress = await turso.execute({
+          sql: `SELECT COUNT(*) AS total FROM ModuleProgress WHERE moduleId = ?`,
+          args: [old.id]
+        });
+
+        if (Number(withProgress.rows[0]?.total || 0) === 0) {
+          await turso.execute({ sql: `DELETE FROM Module WHERE id = ?`, args: [old.id] });
+        } else {
+          console.warn(
+            `⚠️  Módulo ${old.id} ("${old.title}") conservado: tiene progreso de alumnos y ya no está en la edición.`
+          );
+        }
+      }
     }
 
     const updatedRoute = await buildFullRoute(routeId);
-    syncRouteToGraph(routeId, title, category, updatedRoute?.modules || []);
+    // El grafo puede tener módulos de la versión anterior de la ruta: se
+    // borran antes de re-sincronizar para que no queden obsoletos.
+    await deleteRouteFromGraph(routeId);
+    await syncRouteToGraph(routeId, title, category, updatedRoute?.modules || []);
 
     return res.status(200).json({ message: 'Ruta actualizada', route: updatedRoute });
   } catch (error) {
@@ -368,7 +447,7 @@ export const generatePersonalizedRoute = async (req, res) => {
     }
 
     const fullRoute = await buildFullRoute(routeId);
-    syncRouteToGraph(routeId, parsedData.title, 'Generada por IA', fullRoute?.modules || []);
+    await syncRouteToGraph(routeId, parsedData.title, 'Generada por IA', fullRoute?.modules || []);
 
     return res.status(201).json({ message: 'Ruta IA generada exitosamente', route: fullRoute });
   } catch (error) {
@@ -411,7 +490,10 @@ export const getMyRoutes = async (req, res) => {
 
     const routes = await Promise.all(
       [...byId.values()].map(async ({ id, enrollmentId, enrolledAt }) => {
-        const route = await buildFullRoute(id);
+        // `userId` es imprescindible: sin él `buildFullRoute` no puebla
+        // `isPassed`/`score` de cada módulo y el panel de analítica cuenta
+        // 0 módulos completados aunque el alumno los haya aprobado.
+        const route = await buildFullRoute(id, userId);
         if (!route) return null;
 
         return {
@@ -435,9 +517,32 @@ export const getMyRoutes = async (req, res) => {
 
 export const enrollRoute = async (req, res) => {
   try {
-    const { id }   = req.params;
-    const userId   = req.user.id;
-    const routeId  = parseInt(id);
+    const userId  = req.user.id;
+    const routeId = parseRouteId(req.params.id);
+
+    // LIM-03: antes, enrolarse en una ruta inexistente reventaba con un 500
+    // por violación de la FK de Turso. Ahora se responde 404.
+    if (routeId === null) {
+      return res.status(400).json({ error: 'El identificador de la ruta no es válido.' });
+    }
+
+    const routeExists = await turso.execute({
+      sql: `SELECT id, isPublic, authorId FROM LearningRoute WHERE id = ?`,
+      args: [routeId]
+    });
+    if (!routeExists.rows.length) {
+      return res.status(404).json({ error: 'Ruta no encontrada.' });
+    }
+
+    // Las rutas privadas solo son visibles para quien las creó. Antes se
+    // permitían a cualquiera que conociera el id (el alumno no las ve en el
+    // catálogo, pero podía inscribirse y el endpoint devolvía 201).
+    const route = routeExists.rows[0];
+    const isPublic = Boolean(route.isPublic);
+    const isAuthor = Number(route.authorId) === Number(userId);
+    if (!isPublic && !isAuthor) {
+      return res.status(403).json({ error: 'No puedes inscribirte en una ruta privada.' });
+    }
 
     const existing = await turso.execute({
       sql: `SELECT id FROM Enrollment WHERE userId = ? AND learningRouteId = ?`,
@@ -452,6 +557,11 @@ export const enrollRoute = async (req, res) => {
       sql: `INSERT INTO Enrollment (userId, learningRouteId) VALUES (?, ?)`,
       args: [userId, routeId]
     });
+
+    // Reflejar la inscripción en el grafo (`ENROLLED_IN`): sin esta relación
+    // las recomendaciones cruzadas ofrecían la materia en la que el alumno
+    // ya estaba inscrito.
+    await syncEnrollmentToGraph(userId, routeId);
 
     const result = await turso.execute({
       sql: `SELECT * FROM Enrollment WHERE userId = ? AND learningRouteId = ?`,
@@ -469,7 +579,13 @@ export const completeModule = async (req, res) => {
   try {
     const { moduleId, score, passed } = req.body;
     const userId = req.user.id;
-    const modId  = parseInt(moduleId);
+    const modId  = parseInt(moduleId, 10);
+
+    // Un `moduleId` no numérico no puede enlazarse en Turso (NaN) y provocaba
+    // un 500 en lugar de un 400 con mensaje claro.
+    if (!Number.isInteger(modId) || modId <= 0) {
+      return res.status(400).json({ error: 'El identificador del módulo no es válido.' });
+    }
 
     // Obtener routeId y title del módulo
     const moduleData = await turso.execute({
@@ -482,6 +598,39 @@ export const completeModule = async (req, res) => {
     const routeId = moduleData.rows[0].routeId;
     const moduleTitle = moduleData.rows[0].title;
 
+    // ── Autorización: el alumno debe estar inscrito en la ruta ─────────────
+    // Antes no se comprobaba: cualquier STUDENT autenticado podía aprobar
+    // módulos de cualquier ruta (verificado: +50 XP y `ModuleProgress` creado
+    // sin inscripción previa).
+    const enrollment = await turso.execute({
+      sql: `SELECT id FROM Enrollment WHERE userId = ? AND learningRouteId = ?`,
+      args: [userId, routeId]
+    });
+
+    if (!enrollment.rows.length) {
+      return res.status(403).json({
+        error: 'No estás inscrito en esta ruta. Inscríbete antes de registrar tu progreso.'
+      });
+    }
+
+    // ── Un módulo ya aprobado no se puede volver a reprobar ───────────────
+    // Antes la comprobación estaba DESPUÉS de la rama de suspenso: un alumno
+    // que ya había aprobado podía reenviar `passed: false` y se registraba
+    // la dificultad, dejando el `Topic` con `COMPLETED` y `STRUGGLES_WITH`
+    // a la vez (el tema ya superado acababa marcado como "⚡ Refuerzo").
+    const existingProgress = await turso.execute({
+      sql: `SELECT id FROM ModuleProgress WHERE userId = ? AND moduleId = ?`,
+      args: [userId, modId]
+    });
+
+    if (existingProgress.rows.length) {
+      return res.status(200).json({
+        message: 'Módulo ya completado anteriormente.',
+        passed: true,
+        progress: await getRouteProgress(userId, routeId),
+      });
+    }
+
     if (!passed || (score !== undefined && score < 70)) {
       await markModuleStruggle(userId, routeId, moduleTitle, score || 0, 'Reprobó examen de módulo');
       return res.status(200).json({
@@ -489,15 +638,6 @@ export const completeModule = async (req, res) => {
         passed: false,
         score: score || 0
       });
-    }
-
-    const existingProgress = await turso.execute({
-      sql: `SELECT id FROM ModuleProgress WHERE userId = ? AND moduleId = ?`,
-      args: [userId, modId]
-    });
-
-    if (existingProgress.rows.length) {
-      return res.status(200).json({ message: 'Módulo ya completado anteriormente.' });
     }
 
     await turso.execute({

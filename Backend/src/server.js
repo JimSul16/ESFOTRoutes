@@ -4,10 +4,10 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 
-import { initDB } from './config/turso.js';
+import { initDB, turso } from './config/turso.js';
 import { runMigrations } from './db/migrate.js';
 import { ensureBaseRoles, warnAboutLockedAccounts } from './services/init.service.js';
-import { verifyNeo4jConnection } from './services/neo4j.service.js';
+import { verifyNeo4jConnection, closeDriver } from './services/neo4j.service.js';
 
 import authRoutes     from './routes/auth.routes.js';
 import adminRoutes    from './routes/admin.routes.js';
@@ -17,6 +17,7 @@ import uploadRoutes   from './routes/upload.routes.js';
 import chatRoutes     from './routes/chat.routes.js';
 import executeRoutes  from './routes/execute.routes.js';
 import graphRoutes    from './routes/graph.routes.js';
+import analyticsRoutes from './routes/analytics.routes.js';
 import { aiLimiter }  from './middlewares/rateLimiter.middleware.js';
 
 const app = express();
@@ -31,10 +32,41 @@ app.use(helmet());
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+
+    // Se comparan host y puerto EXACTOS. Antes se usaba `startsWith`, así que
+    // `http://localhost.atacker.com` pasaba el filtro y, con
+    // `credentials: true`, el navegador le devolvía la respuesta con las
+    // credenciales de la víctima.
+    let parsed;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      return callback(null, false);
+    }
+
+    const isLoopback =
+      (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') &&
+      (parsed.port === '' || parsed.port === '5173' || parsed.port === '3000');
+
+    if (isLoopback) {
       return callback(null, true);
     }
-    return callback(null, process.env.FRONTEND_URL || 'http://localhost:3000');
+
+    const configured = process.env.FRONTEND_URL;
+    if (configured) {
+      try {
+        const allowed = new URL(configured);
+        if (parsed.origin === allowed.origin) {
+          return callback(null, true);
+        }
+      } catch {
+        console.warn('⚠️  FRONTEND_URL no es una URL válida:', configured);
+      }
+    }
+
+    // Origen no permitido: se responde con el origen configurado (o `false`)
+    // para que el navegador bloquee la respuesta.
+    return callback(null, configured ?? false);
   },
   credentials: true,
   optionsSuccessStatus: 200
@@ -50,6 +82,7 @@ app.use("/api/upload",    uploadRoutes);
 app.use("/api/chat",      aiLimiter, chatRoutes);
 app.use("/api/execute",   executeRoutes);
 app.use("/api/graph",     graphRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 app.use(express.static('public'));
 
@@ -88,3 +121,21 @@ startServer().catch((err) => {
   console.error("❌ No se pudo iniciar el servidor:", err.message);
   process.exit(1);
 });
+
+/**
+ * Cierre ordenado: sin esto el driver de Neo4j y el cliente de Turso se
+ * quedan con los sockets abiertos y el proceso no termina solo.
+ */
+const shutdown = async (signal) => {
+  console.log(`\n🛑 ${signal} recibido. Cerrando conexiones...`);
+  try {
+    await closeDriver();
+    await turso.close();
+  } catch (err) {
+    console.error('⚠️  Error cerrando conexiones:', err.message);
+  }
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

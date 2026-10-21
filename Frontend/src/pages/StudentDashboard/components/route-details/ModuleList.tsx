@@ -8,6 +8,8 @@ export interface ModuleListProps {
   onGenerateAssessment: (moduleId: string, type: AssessmentType) => void;
   isGeneratingAssessment: boolean;
   loadingType?: AssessmentType | null;
+  /** Abre el tutor IA con el contexto del módulo (GraphRAG). */
+  onAskTutor?: (moduleId: string, moduleTitle: string) => void;
 }
 
 const ModuleList = ({
@@ -17,6 +19,7 @@ const ModuleList = ({
   onGenerateAssessment,
   isGeneratingAssessment,
   loadingType,
+  onAskTutor,
 }: ModuleListProps) => {
   if (!modules || modules.length === 0) {
     return (
@@ -39,6 +42,7 @@ const ModuleList = ({
           onGenerateAssessment={onGenerateAssessment}
           isGeneratingAssessment={isGeneratingAssessment}
           loadingType={loadingType}
+          onAskTutor={onAskTutor}
         />
       ))}
     </div>

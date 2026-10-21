@@ -24,16 +24,17 @@ export interface AssessmentPayload {
 /** El backend devuelve el JSON crudo generado por Gemini. */
 export type AssessmentResponse = AssessmentData;
 
-export const sendMessage = async (
+const sendMessage = async (
   payload: SendChatMessagePayload
 ): Promise<SendChatMessageResponse> => {
   const response = await httpClient.post<SendChatMessageResponse>('/chat/send', payload);
   return response.data;
 };
 
+/** `POST /chat/send` con el contexto GraphRAG (topicId) incluido. */
 export const sendChatMessage = sendMessage;
 
-export const getAssessment = async (
+const getAssessment = async (
   payload: AssessmentPayload
 ): Promise<AssessmentResponse> => {
   const response = await httpClient.post<AssessmentResponse>('/chat/assessment', payload);

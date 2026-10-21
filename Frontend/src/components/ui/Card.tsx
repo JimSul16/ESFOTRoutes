@@ -36,10 +36,4 @@ export const CardBody = ({ className = '', children }: CardSectionProps) => (
   </div>
 );
 
-export const CardFooter = ({ className = '', children }: CardSectionProps) => (
-  <div className={`px-6 py-4 border-t border-surface-100 dark:border-surface-800 ${className}`}>
-    {children}
-  </div>
-);
-
 export default Card;

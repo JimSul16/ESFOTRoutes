@@ -1,6 +1,6 @@
 import graphlib from 'graphlib';
 import { turso } from '../config/turso.js';
-import { getUserSubjectKnowledgeData } from './knowledgeGraph.service.js';
+import { getUserSubjectKnowledgeData, syncEnrollmentToGraph } from './knowledgeGraph.service.js';
 import { syncRouteToGraph } from './neo4j.service.js';
 import { generateCurricularFallbackAssessment } from './chat.service.js';
 
@@ -450,8 +450,19 @@ export const generateAndPersistAdaptiveRoute = async ({ userId, subjectId, autho
       args: [userId, createdRouteId]
     });
 
+    // Reflejar la inscripción en el grafo (`ENROLLED_IN`) para que las
+    // recomendaciones cruzadas no ofrezcan la materia en la que ya está
+    // inscrito el alumno.
+    await syncEnrollmentToGraph(userId, createdRouteId);
+
     // 4. Sincronizar en Neo4j AuraDB
-    const neo4jModules = adaptivePlan.structuredModules.map(m => ({ title: m.title }));
+    const neo4jModules = adaptivePlan.structuredModules.map(m => ({
+      title: m.title,
+      // BUG 1: sin los ids de los temas, el `Module` runtime del grafo no
+      // enlazaba con sus `Topic` curriculares y `COMPLETED` / `STRUGGLES_WITH`
+      // nunca llegaban al grafo (ni refuerzo adaptativo, ni recomendaciones).
+      topicIds: (m.topics || []).map(t => t.topicId).filter(Boolean)
+    }));
     await syncRouteToGraph(createdRouteId, routeTitle, subjectName, neo4jModules);
 
     return {

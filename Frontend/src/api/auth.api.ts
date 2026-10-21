@@ -1,4 +1,5 @@
 import httpClient from './httpClient';
+import { toId } from './normalize';
 import type {
   AuthMessageResponse,
   ChangePasswordData,
@@ -50,11 +51,10 @@ export const verifyAccount = async (token: string): Promise<AuthMessageResponse>
   return response.data;
 };
 
-export const verifyToken = verifyAccount;
-
 export const getProfile = async (): Promise<User> => {
   const response = await httpClient.get<User>('/auth/profile');
-  return response.data;
+  // El backend devuelve el `id` de Turso como número; el tipo dice `string`.
+  return { ...response.data, id: toId(response.data.id) ?? response.data.id };
 };
 
 /**
@@ -65,7 +65,10 @@ export const updateProfile = async (
   payload: UpdateProfilePayload
 ): Promise<UpdateProfileResponse> => {
   const response = await httpClient.put<UpdateProfileResponse>('/auth/profile', payload);
-  return response.data;
+  return {
+    ...response.data,
+    user: { ...response.data.user, id: toId(response.data.user?.id) ?? response.data.user?.id },
+  };
 };
 
 /** Vía autenticada de cambio de contraseña (requiere la actual). */
@@ -92,10 +95,9 @@ export const resetPassword = async (
 
 export const getSessions = async (): Promise<SessionEntry[]> => {
   const response = await httpClient.get<SessionEntry[]>('/auth/sessions');
-  return response.data;
+  // `SessionEntry.id` llega como número desde Turso.
+  return response.data.map((session) => ({ ...session, id: toId(session.id) ?? session.id }));
 };
-
-export const getSessionHistory = getSessions;
 
 // ─── Desbloqueo de cuenta ─────────────────────────────────────────────────────
 

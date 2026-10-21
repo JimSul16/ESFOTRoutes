@@ -21,8 +21,6 @@ export const uploadProfileImage = async (file: File): Promise<UploadResponse> =>
   return response.data;
 };
 
-export const uploadProfile = uploadProfileImage;
-
 export const uploadCoverImage = async (file: File): Promise<CoverUploadResponse> => {
   const formData = new FormData();
   formData.append('portada', file);
@@ -32,6 +30,3 @@ export const uploadCoverImage = async (file: File): Promise<CoverUploadResponse>
   });
   return response.data;
 };
-
-export const uploadPortada = uploadCoverImage;
-export const subirPortada = uploadCoverImage;

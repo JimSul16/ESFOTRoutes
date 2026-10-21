@@ -16,6 +16,17 @@ vi.mock('../../api/graph.api', () => ({
   getSubjectTopics: vi.fn().mockResolvedValue([]),
   submitSelfDiagnosis: vi.fn(),
   generatePersonalizedAdaptiveRoute: vi.fn(),
+  getGraphRecommendations: vi.fn().mockResolvedValue([]),
+  getModuleTopics: vi.fn().mockResolvedValue([]),
+  getTopicGraphContext: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('../../api/analytics.api', () => ({
+  getWeeklyActivity: vi.fn().mockResolvedValue({
+    success: true,
+    weeklyActivity: [],
+    totalMinutes: 0,
+    totalCompletedModules: 0,
+  }),
 }));
 vi.mock('../../api/upload.api', () => ({ uploadProfileImage: vi.fn() }));
 
