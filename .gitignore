@@ -14,6 +14,24 @@ dev.db
 logs/
 *.log
 
+# Respaldos de bases de datos (contienen hashes y datos reales)
+*.db.bak
+*.bak
+*.backup
+Respaldos Grafo/
+
+# Documentos binarios (no van a un repo de código)
+*.docx
+*.pdf
+
+# Material local de pruebas: evidencia de tesis y configuración del agente.
+# No forma parte del código de la plataforma.
+Pruebas/
+
+# Carpeta de Postman: colecciones, entornos con tokens JWT vivos y scripts de
+# demo con credenciales en claro. Es material de trabajo, no código de la app.
+Backend/postman/
+
 # Build outputs
 dist/
 build/
