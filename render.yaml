@@ -1,0 +1,79 @@
+# Blueprint de Render para el backend de la Plataforma ESFOT.
+#
+# Uso: Render Dashboard → New → Blueprint → seleccionar el repositorio.
+# Render detecta este archivo automáticamente en la raíz del repo.
+#
+# Los valores marcados con `sync: false` NO se guardan en el repositorio:
+# Render los pedirá en el dashboard al crear el servicio.
+services:
+  - type: web
+    name: esfot-backend
+    runtime: node
+    plan: free
+    rootDir: Backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+
+      # ── Base de datos relacional (OBLIGATORIO en producción) ──────────────
+      # No usar `file:./dev.db`: el disco de Render es efímero y la BD se
+      # vacía en cada deploy (no habría usuarios y el login fallaría).
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+
+      # ── Grafo de conocimiento ─────────────────────────────────────────────
+      - key: NEO4J_URI
+        sync: false
+      - key: NEO4J_USERNAME
+        sync: false
+      - key: NEO4J_PASSWORD
+        sync: false
+      - key: NEO4J_DATABASE
+        sync: false
+
+      # ── Seguridad ─────────────────────────────────────────────────────────
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 24h
+      - key: RATE_LIMIT_MAX
+        value: "300"
+
+      # ── Frontend (CORS) ───────────────────────────────────────────────────
+      # Dominio exacto del frontend en Vercel. Admite varias URLs por coma.
+      - key: FRONTEND_URL
+        sync: false
+
+      # ── Integraciones ─────────────────────────────────────────────────────
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_PRIMARY_MODEL
+        value: gemini-3.5-flash
+      - key: GEMINI_BACKUP_MODEL
+        value: gemini-3.5-flash-lite
+      - key: GEMINI_API_KEY_BACKUP
+        sync: false
+      - key: SMTP_SERVICE
+        value: gmail
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: JDOODLE_CLIENT_ID
+        sync: false
+      - key: JDOODLE_CLIENT_SECRET
+        sync: false

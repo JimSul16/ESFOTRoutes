@@ -22,11 +22,42 @@ import { aiLimiter }  from './middlewares/rateLimiter.middleware.js';
 
 const app = express();
 
+/**
+ * Render / Railway / Vercel colocan un proxy delante del proceso. Sin esto,
+ * `req.ip` es siempre la IP del proxy: el rate limit global contaría a TODOS
+ * los usuarios como si fueran uno solo (y un health check cada 30 s agotaría
+ * la cuota). Con `1` confiamos en el primer salto del proxy.
+ */
+app.set('trust proxy', 1);
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  // Configurable por entorno: el valor de desarrollo (100) es muy bajo para
+  // una red universitaria donde muchos alumnos salen con la misma IP pública.
+  max: Number(process.env.RATE_LIMIT_MAX) || 300,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: "Too many requests from this IP, please try again later."
 });
+
+/**
+ * Orígenes permitidos. `FRONTEND_URL` admite varias URLs separadas por coma
+ * (dominio de producción + previews de Vercel), p. ej.:
+ *   FRONTEND_URL=https://esfot.vercel.app,https://esfot-git-main.vercel.app
+ */
+const allowedOrigins = new Set(
+  (process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((value) => {
+      try {
+        return new URL(value.trim()).origin;
+      } catch {
+        if (value.trim()) console.warn('⚠️  FRONTEND_URL no es una URL válida:', value.trim());
+        return null;
+      }
+    })
+    .filter(Boolean)
+);
 
 app.use(helmet());
 app.use(cors({
@@ -44,34 +75,33 @@ app.use(cors({
       return callback(null, false);
     }
 
-    const isLoopback =
-      (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') &&
-      (parsed.port === '' || parsed.port === '5173' || parsed.port === '3000');
+    // Desarrollo local: se acepta cualquier puerto de loopback porque Vite
+    // salta a 5174/5175 cuando 5173 está ocupado y, con los puertos fijos
+    // anteriores, el navegador empezaba a rechazar todas las peticiones.
+    const isLoopback = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
 
     if (isLoopback) {
       return callback(null, true);
     }
 
-    const configured = process.env.FRONTEND_URL;
-    if (configured) {
-      try {
-        const allowed = new URL(configured);
-        if (parsed.origin === allowed.origin) {
-          return callback(null, true);
-        }
-      } catch {
-        console.warn('⚠️  FRONTEND_URL no es una URL válida:', configured);
-      }
+    if (allowedOrigins.has(parsed.origin)) {
+      return callback(null, true);
     }
 
-    // Origen no permitido: se responde con el origen configurado (o `false`)
-    // para que el navegador bloquee la respuesta.
-    return callback(null, configured ?? false);
+    console.warn(`🚫 CORS bloqueó el origen: ${parsed.origin}`);
+    return callback(null, false);
   },
   credentials: true,
   optionsSuccessStatus: 200
 }));
 app.use(express.json());
+
+/**
+ * Health check ANTES del limitador: las plataformas de despliegue lo consultan
+ * cada pocos segundos y no debe consumir la cuota de peticiones.
+ */
+app.get("/api/health", (req, res) => res.json({ status: "ok", message: "API ESFOT funcionando ✅" }));
+
 app.use(limiter);
 
 app.use("/api/auth",      authRoutes);
@@ -85,8 +115,6 @@ app.use("/api/graph",     graphRoutes);
 app.use("/api/analytics", analyticsRoutes);
 
 app.use(express.static('public'));
-
-app.get("/api/health", (req, res) => res.json({ status: "ok", message: "API ESFOT funcionando ✅" }));
 
 const PORT = process.env.PORT || 3000;
 
@@ -112,8 +140,15 @@ const startServer = async () => {
   await warnAboutLockedAccounts(); // Avisa de cuentas bloqueadas sin salida
   await verifyNeo4jConnection(); // Verifica enlace con Grafo de Conocimiento
 
-  app.listen(PORT, () => {
-    console.log(`🚀 Servidor en puerto ${PORT}`);
+  // `0.0.0.0` explícito: algunos contenedores/PaaS no enrutan si el proceso
+  // escucha solo en loopback.
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Servidor en puerto ${PORT} (${process.env.NODE_ENV || 'development'})`);
+    console.log(
+      allowedOrigins.size
+        ? `🌐 CORS permitido para: ${[...allowedOrigins].join(', ')}`
+        : '🌐 CORS: solo orígenes de loopback (desarrollo). Define FRONTEND_URL en producción.'
+    );
   });
 };
 
