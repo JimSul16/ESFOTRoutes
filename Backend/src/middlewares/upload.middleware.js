@@ -4,7 +4,20 @@ const storage = multer.memoryStorage();
 
 export const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1000 }
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp'
+    ];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Formato no permitido. Solo se admiten archivos PDF o imágenes (JPG, PNG, WEBP).'));
+    }
+  }
 });
 
 /**
