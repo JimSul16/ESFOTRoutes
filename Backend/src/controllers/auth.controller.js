@@ -352,9 +352,13 @@ export const login = async (req, res) => {
     });
 
     // ── 2FA OTP ──────────────────────────────────────────────────────────────
-    if (!otp) {
-      const generatedOtp = await generateOTP(email);
-      const delivery = await sendOTPEmail(email, user.name, generatedOtp);
+    const is2FAEnabled = process.env.REQUIRE_2FA !== 'false';
+
+    if (is2FAEnabled) {
+      if (!otp) {
+        const generatedOtp = await generateOTP(email);
+        console.log(`🔑 [2FA OTP] Código generado para [${email}]: ${generatedOtp}`);
+        const delivery = await sendOTPEmail(email, user.name, generatedOtp);
 
       // Si el correo NO salió hay que decirlo: responder "código enviado" sin
       // haberlo enviado era el motivo de que el usuario se quedara esperando
@@ -373,6 +377,7 @@ export const login = async (req, res) => {
     const otpCheck = await verifyOTP(email, otp);
     if (!otpCheck.valid) {
       return await handleFailedOtpAttempt(user, res, otpCheck.reason);
+    }
     }
 
     // ── Login Exitoso: Resetear contadores de fallos y bloqueos ───────────────
@@ -437,6 +442,9 @@ export const forgotPassword = async (req, res) => {
       sql: `UPDATE User SET resetToken = ? WHERE id = ?`,
       args: [resetToken, user.id]
     });
+
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${resetToken}`;
+    console.log(`🔑 [PASSWORD RESET] Enlace generado para [${email}]: ${resetUrl}`);
 
     await sendPasswordResetEmail(email, user.name, resetToken);
 

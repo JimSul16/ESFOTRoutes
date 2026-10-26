@@ -39,6 +39,37 @@ const getTransporter = () => {
  * @returns {Promise<{ ok: boolean, simulated?: boolean, error?: string, messageId?: string }>}
  */
 export const sendEmail = async ({ to, subject, html }) => {
+  // ── Opción 1: Resend vía HTTPS REST (Puerto 443) ───────────────────────────
+  // Compatible con Render Free Tier donde los puertos SMTP 25/465/587 están bloqueados.
+  const resendApiKey = process.env.RESEND_API_KEY;
+  if (resendApiKey) {
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM || 'Plataforma ESFOT <onboarding@resend.dev>',
+          to: Array.isArray(to) ? to : [to],
+          subject,
+          html,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || JSON.stringify(data));
+      }
+
+      console.log(`✉️ Correo enviado vía Resend a ${to} (ID: ${data.id})`);
+      return { ok: true, messageId: data.id };
+    } catch (error) {
+      console.error(`⚠️ Error enviando correo vía Resend a [${to}]:`, error.message);
+    }
+  }
+
   const transporter = getTransporter();
 
   if (!transporter) {
