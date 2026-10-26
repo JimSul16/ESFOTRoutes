@@ -45,19 +45,25 @@ const limiter = rateLimit({
  * (dominio de producción + previews de Vercel), p. ej.:
  *   FRONTEND_URL=https://esfot.vercel.app,https://esfot-git-main.vercel.app
  */
-const allowedOrigins = new Set(
-  (process.env.FRONTEND_URL || '')
-    .split(',')
-    .map((value) => {
-      try {
-        return new URL(value.trim()).origin;
-      } catch {
-        if (value.trim()) console.warn('⚠️  FRONTEND_URL no es una URL válida:', value.trim());
-        return null;
-      }
-    })
-    .filter(Boolean)
-);
+const defaultOrigins = [
+  'https://esfotroutes.vercel.app',
+  'https://tic-rutas-aprendizaje.vercel.app'
+];
+
+const envOrigins = (process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((value) => {
+    try {
+      const clean = value.trim().replace(/^["']|["']$/g, '');
+      return clean ? new URL(clean).origin : null;
+    } catch {
+      if (value.trim()) console.warn('⚠️  FRONTEND_URL no es una URL válida:', value.trim());
+      return null;
+    }
+  })
+  .filter(Boolean);
+
+const allowedOrigins = new Set([...defaultOrigins, ...envOrigins]);
 
 app.use(helmet());
 app.use(cors({
@@ -85,6 +91,11 @@ app.use(cors({
     }
 
     if (allowedOrigins.has(parsed.origin)) {
+      return callback(null, true);
+    }
+
+    // Permitir subdominios de preview en Vercel para este proyecto
+    if (/^https:\/\/(esfotroutes|tic-rutas-aprendizaje)(-[a-z0-9-]+)?\.vercel\.app$/.test(parsed.origin)) {
       return callback(null, true);
     }
 

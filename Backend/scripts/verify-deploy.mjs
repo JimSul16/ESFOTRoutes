@@ -4,7 +4,7 @@
  *
  * Uso:
  *   node scripts/verify-deploy.mjs https://tu-backend.onrender.com
- *   node scripts/verify-deploy.mjs https://tu-backend.onrender.com https://tic-rutas-aprendizaje.vercel.app
+ *   node scripts/verify-deploy.mjs https://tu-backend.onrender.com https://esfotroutes.vercel.app
  *
  * Comprueba, en este orden:
  *   1. Que el servicio responda (health check).

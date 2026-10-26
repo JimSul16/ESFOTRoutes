@@ -140,3 +140,25 @@ describe('executeCode — no resuelve el lenguaje por la cadena de prototipos', 
     }
   });
 });
+
+describe('CORS — orígenes válidos', () => {
+  const allowedPattern = /^https:\/\/(esfotroutes|tic-rutas-aprendizaje)(-[a-z0-9-]+)?\.vercel\.app$/;
+
+  test('permite el dominio de producción principal esfotroutes.vercel.app', () => {
+    expect(allowedPattern.test('https://esfotroutes.vercel.app')).toBe(true);
+  });
+
+  test('permite previews de Vercel para esfotroutes', () => {
+    expect(allowedPattern.test('https://esfotroutes-git-main-epn.vercel.app')).toBe(true);
+  });
+
+  test('permite tic-rutas-aprendizaje.vercel.app', () => {
+    expect(allowedPattern.test('https://tic-rutas-aprendizaje.vercel.app')).toBe(true);
+  });
+
+  test('bloquea dominios de atacantes que intenten suplantar el origen', () => {
+    expect(allowedPattern.test('https://esfotroutes.vercel.app.attacker.com')).toBe(false);
+    expect(allowedPattern.test('http://esfotroutes.vercel.app')).toBe(false);
+    expect(allowedPattern.test('https://malicious-site.com')).toBe(false);
+  });
+});

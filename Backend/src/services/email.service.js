@@ -11,7 +11,13 @@ const getTransporter = () => {
 
     if (user && pass) {
       _transporter = nodemailer.createTransport({
-        service: process.env.SMTP_SERVICE || 'gmail',
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        family: 4,
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
         auth: {
           user: user,
           pass: pass, // Contraseña de aplicación de Google (16 caracteres)

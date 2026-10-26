@@ -28,7 +28,7 @@ seguirá fallando**.
 ## Definición de terminado
 
 - [ ] `GET /api/health` del backend responde `{"status":"ok"}`
-- [ ] El backend permite CORS desde `https://tic-rutas-aprendizaje.vercel.app`
+- [ ] El backend permite CORS desde `https://esfotroutes.vercel.app`
 - [ ] El bundle de Vercel ya **no** contiene `localhost:3000`
 - [ ] Login real desde el sitio de Vercel entra al dashboard
 - [ ] El servicio no se duerme (monitor activo)
@@ -69,7 +69,7 @@ En el dashboard del servicio → **Environment**. Valores desde `Backend/.env`:
 - [ ] `NEO4J_PASSWORD` → el del `.env`
 - [ ] `NEO4J_DATABASE` → `b2adc2aa`
 - [ ] `JWT_SECRET` → el del `.env`
-- [ ] `FRONTEND_URL` → **`https://tic-rutas-aprendizaje.vercel.app`**
+- [ ] `FRONTEND_URL` → **`https://esfotroutes.vercel.app`**
 - [ ] `GEMINI_API_KEY`, `GEMINI_API_KEY_BACKUP` → los del `.env`
 - [ ] `SMTP_USER`, `SMTP_PASS` → los del `.env`
 - [ ] Cloudinary / JDoodle → vacíos (no bloquean el login)
@@ -105,7 +105,7 @@ En el proyecto de Vercel → **Settings → Environment Variables**:
 Comprobación rápida del bundle (PowerShell):
 
 ```powershell
-(Invoke-WebRequest https://tic-rutas-aprendizaje.vercel.app -UseBasicParsing).Content
+(Invoke-WebRequest https://esfotroutes.vercel.app -UseBasicParsing).Content
 # buscar el <script src>, descargarlo y comprobar que NO aparece localhost:3000
 ```
 
@@ -113,7 +113,7 @@ Comprobación rápida del bundle (PowerShell):
 
 ## Fase 5 — Prueba de extremo a extremo (~5 min)
 
-- [ ] Abrir `https://tic-rutas-aprendizaje.vercel.app`
+- [ ] Abrir `https://esfotroutes.vercel.app`
 - [ ] Login con una cuenta real (de las 9 de Turso)
 - [ ] Entrar al dashboard
 - [ ] Abrir una ruta → confirmar que el grafo responde
