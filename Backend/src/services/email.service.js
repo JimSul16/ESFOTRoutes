@@ -129,6 +129,7 @@ export const sendOTPEmail = async (email, name, otpCode) => {
 export const sendVerificationEmail = async (email, token) => {
   try {
     const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/confirm/${token}`;
+    console.log(`🔑 [VERIFICATION LINK] Enlace para [${email}]: ${verificationLink}`);
     const subject = "Verifica tu cuenta institucional ESFOT";
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">

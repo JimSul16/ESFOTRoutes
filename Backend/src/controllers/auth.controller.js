@@ -352,7 +352,7 @@ export const login = async (req, res) => {
     });
 
     // ── 2FA OTP ──────────────────────────────────────────────────────────────
-    const is2FAEnabled = process.env.REQUIRE_2FA !== 'false';
+    const is2FAEnabled = process.env.REQUIRE_2FA === 'true';
 
     if (is2FAEnabled) {
       if (!otp) {

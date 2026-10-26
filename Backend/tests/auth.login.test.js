@@ -16,6 +16,7 @@
  */
 process.env.TURSO_DATABASE_URL = ':memory:';
 process.env.JWT_SECRET = 'secret-de-pruebas';
+process.env.REQUIRE_2FA = 'true';
 
 // En modo ESM el objeto `jest` no es global: hay que importarlo.
 import { jest } from '@jest/globals';
