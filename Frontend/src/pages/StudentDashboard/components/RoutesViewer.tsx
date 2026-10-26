@@ -7,10 +7,18 @@ import type { StudentTab } from '../index';
 export interface RoutesViewerProps {
   onSelectRoute: (route: LearningRoute) => void;
   setActiveTab: (tab: StudentTab) => void;
+  /**
+   * Abre el autodiagnóstico curricular.
+   *
+   * Es el único camino para que el estudiante genere una ruta personalizada:
+   * el botón "Nueva Ruta Personalizada" ya no navega a otra pestaña, abre el
+   * modal que evalúa tema por tema y genera la ruta adaptativa del grafo.
+   */
+  onOpenSelfDiagnosis: () => void;
   refreshTrigger?: number;
 }
 
-const RoutesViewer = ({ onSelectRoute, setActiveTab, refreshTrigger }: RoutesViewerProps) => {
+const RoutesViewer = ({ onSelectRoute, setActiveTab, onOpenSelfDiagnosis, refreshTrigger }: RoutesViewerProps) => {
   const [rutas, setRutas] = useState<LearningRoute[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -49,11 +57,11 @@ const RoutesViewer = ({ onSelectRoute, setActiveTab, refreshTrigger }: RoutesVie
           </p>
         </div>
         <button
-          onClick={() => setActiveTab('crear-ruta')}
+          onClick={onOpenSelfDiagnosis}
           className="shrink-0 bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-5 rounded-xl flex items-center gap-2 text-sm shadow-sm hover:shadow-brand-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] self-start sm:self-auto"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-          <span>Nueva Ruta Personalizada</span>
+          <span aria-hidden="true">🧭</span>
+          <span>Autodiagnóstico y Ruta Adaptativa</span>
         </button>
       </div>
 
@@ -72,6 +80,12 @@ const RoutesViewer = ({ onSelectRoute, setActiveTab, refreshTrigger }: RoutesVie
               className="bg-brand-600 hover:bg-brand-500 text-white font-semibold py-2.5 px-5 rounded-xl text-xs sm:text-sm transition-all shadow-sm"
             >
               Explorar Catálogo General
+            </button>
+            <button
+              onClick={onOpenSelfDiagnosis}
+              className="bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700 border border-surface-200 dark:border-surface-700 font-semibold py-2.5 px-5 rounded-xl text-xs sm:text-sm transition-all"
+            >
+              🧭 Autodiagnóstico
             </button>
           </div>
         </div>

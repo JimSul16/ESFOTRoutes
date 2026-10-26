@@ -1,4 +1,4 @@
-import { useState, useEffect, type ChangeEvent } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent } from 'react';
 import { toast } from 'react-toastify';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,6 +17,21 @@ const routeSchema = z.object({
   difficulty: z.enum(['BEGINNER', 'INTERMEDIATE', 'ADVANCED', 'ADAPTIVE']),
   evaluationRules: z.string().optional()
 });
+
+const MAX_COVER_SIZE = 5 * 1024 * 1024; // 5 MB
+
+/** Extensiones aceptadas como respaldo cuando el navegador no informa el MIME. */
+const COVER_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+
+/**
+ * El atributo `accept="image/*"` solo orienta al explorador de archivos: el
+ * usuario todavía puede elegir "Todos los archivos" o arrastrar el archivo.
+ * Por eso el tipo real se valida aquí antes de subirlo al backend.
+ */
+const isImageFile = (file: File): boolean => {
+  if (file.type) return file.type.startsWith('image/');
+  return COVER_EXTENSIONS.test(file.name);
+};
 
 export interface RouteBuilderProps {
   initialData: LearningRoute | null;
@@ -40,19 +55,42 @@ const RouteBuilder = ({ initialData, onCancel, onSaveSuccess }: RouteBuilderProp
   const [availableResources, setAvailableResources] = useState<Resource[]>([]);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(initialData?.imageUrl ?? null);
+  /** URL blob de la vista previa, para poder revocarla y no filtrar memoria. */
+  const coverPreviewRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (coverPreviewRef.current) URL.revokeObjectURL(coverPreviewRef.current);
+    };
+  }, []);
 
   const handleCoverChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('La portada no puede superar los 5 MB.');
-      e.target.value = '';
+    // 1) Tipo de archivo: solo imágenes.
+    if (!isImageFile(file)) {
+      toast.error('La portada debe ser una imagen (PNG, JPG, WEBP o GIF).');
+      input.value = '';
       return;
     }
 
+    // 2) Tamaño máximo.
+    if (file.size > MAX_COVER_SIZE) {
+      toast.error('La portada no puede superar los 5 MB.');
+      input.value = '';
+      return;
+    }
+
+    if (coverPreviewRef.current) {
+      URL.revokeObjectURL(coverPreviewRef.current);
+    }
+    const previewUrl = URL.createObjectURL(file);
+    coverPreviewRef.current = previewUrl;
+
     setCoverFile(file);
-    setCoverPreview(URL.createObjectURL(file));
+    setCoverPreview(previewUrl);
   };
   const [loadingResources, setLoadingResources] = useState(true);
 
@@ -280,7 +318,9 @@ const { register, handleSubmit, watch, setValue, formState: { errors } } = useFo
                       onChange={handleCoverChange}
                       className="block w-full text-sm text-surface-500 dark:text-surface-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-surface-100 dark:file:bg-surface-800 file:text-surface-700 dark:file:text-surface-200 hover:file:bg-surface-200 dark:hover:file:bg-surface-700 cursor-pointer"
                     />
-                    <p className="text-xs text-surface-500 dark:text-surface-400 mt-1">PNG o JPG, hasta 5 MB.</p>
+                    <p className="text-xs text-surface-500 dark:text-surface-400 mt-1">
+                      Solo imágenes (PNG, JPG, WEBP, GIF), hasta 5 MB.
+                    </p>
                   </div>
                 </div>
               </div>

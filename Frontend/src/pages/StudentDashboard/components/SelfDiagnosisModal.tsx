@@ -27,6 +27,14 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [modules, setModules] = useState<GraphModule[]>([]);
+  /**
+   * Módulo visible en el cuerpo del modal.
+   *
+   * El grafo curricular puede traer decenas de módulos con temas: listarlos
+   * todos seguidos era ilegible. Se muestran como pestañas y solo se renderiza
+   * el módulo activo, con su propio contador de temas evaluados.
+   */
+  const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
   const [ratings, setRatings] = useState<Record<string, number>>({});
   /**
    * Temas que el estudiante ha tocado de verdad.
@@ -71,6 +79,8 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
     try {
       const data = await getSubjectTopics(subject.id);
       setModules(data);
+      // Al cambiar de materia arranca siempre en el primer módulo.
+      setActiveModuleId(data[0]?.id ?? null);
       // Nivel por defecto 3 (Intermedio) como punto de partida visual, pero
       // SIN marcar el tema como evaluado: hace falta que el alumno lo toque.
       const initial: Record<string, number> = {};
@@ -96,6 +106,25 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
   // Solo cuentan los temas realmente calificados por el estudiante.
   const evaluatedCount = Object.keys(touched).length;
   const isComplete = totalTopics > 0 && evaluatedCount >= totalTopics;
+
+  /** Módulo visible: el elegido o, si ya no existe, el primero disponible. */
+  const activeModuleIndex = modules.findIndex((m) => m.id === activeModuleId);
+  const activeModule =
+    modules[activeModuleIndex] ?? modules[0] ?? null;
+
+  /** Progreso del módulo: temas calificados sobre los que lo componen. */
+  const moduleProgress = (mod: GraphModule) => {
+    const topics = mod.topics ?? [];
+    return {
+      total: topics.length,
+      rated: topics.filter((t) => touched[t.id]).length,
+    };
+  };
+
+  const goToModule = (index: number) => {
+    const target = modules[index];
+    if (target) setActiveModuleId(target.id);
+  };
 
   const handleSubmit = async () => {
     if (!selectedSubject) return;
@@ -195,15 +224,87 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
           )}
         </div>
 
-        {/* Contenido: Módulos y Temas */}
+        {/* Pestañas por módulo: agrupan los temas del grafo en bloques navegables */}
+        {modules.length > 0 && !loadingTopics && (
+          <div className="px-6 pt-3.5 pb-3 border-b border-surface-200 dark:border-surface-800 bg-surface-100/60 dark:bg-surface-950/50">
+            <div className="flex items-center justify-between gap-3 mb-2.5">
+              <span className="text-xs font-semibold uppercase text-surface-500 dark:text-surface-400 tracking-wider">
+                Módulos de la Materia
+              </span>
+              <span className="text-[11px] text-surface-400 font-mono">
+                {modules.length} módulo{modules.length === 1 ? '' : 's'} · {totalTopics} temas
+              </span>
+            </div>
+            <div
+              role="tablist"
+              aria-label="Módulos de la materia"
+              className="flex gap-2 overflow-x-auto pb-1"
+            >
+              {modules.map((mod, idx) => {
+                const { total, rated } = moduleProgress(mod);
+                const isActive = activeModule?.id === mod.id;
+                const isDone = total > 0 && rated === total;
+                const pct = total > 0 ? Math.round((rated / total) * 100) : 0;
+                return (
+                  <button
+                    key={mod.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    aria-label={`Módulo ${idx + 1}: ${mod.name} — ${rated} de ${total} temas evaluados`}
+                    onClick={() => setActiveModuleId(mod.id)}
+                    className={`shrink-0 w-40 text-left rounded-xl border px-3 py-2 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                      isActive
+                        ? 'bg-brand-600 border-brand-500 text-white shadow-sm'
+                        : 'bg-white dark:bg-surface-900 border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:border-brand-400'
+                    }`}
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold truncate">Módulo {idx + 1}</span>
+                      <span
+                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md shrink-0 ${
+                          isActive
+                            ? 'bg-white/20 text-white'
+                            : isDone
+                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-surface-100 dark:bg-surface-800 text-surface-500 dark:text-surface-400'
+                        }`}
+                      >
+                        {isDone ? '✓ ' : ''}
+                        {rated}/{total}
+                      </span>
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className={`block mt-1.5 h-1 w-full rounded-full overflow-hidden ${
+                        isActive ? 'bg-white/25' : 'bg-surface-200 dark:bg-surface-700'
+                      }`}
+                    >
+                      <span
+                        className={`block h-full rounded-full transition-all duration-300 ${
+                          isActive ? 'bg-white' : 'bg-brand-500'
+                        }`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Contenido: temas del módulo activo */}
         <div className="flex-1 p-6 overflow-y-auto space-y-6">
           {loadingTopics ? (
             <div className="py-20 flex flex-col items-center justify-center text-surface-400">
               <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-600 border-t-transparent mb-3" />
               <p className="text-xs sm:text-sm">Analizando grafo curricular y prerrequisitos...</p>
             </div>
-          ) : (
-            modules.map((mod) => (
+          ) : activeModule ? (
+            modules
+              .filter((mod) => mod.id === activeModule?.id)
+              .map((mod) => (
               <div key={mod.id} className="bg-surface-50/70 dark:bg-surface-950/40 border border-surface-200 dark:border-surface-800/80 rounded-2xl p-5">
                 <div className="mb-4 pb-2 border-b border-surface-200/80 dark:border-surface-800/60 flex items-center justify-between">
                   <div>
@@ -290,6 +391,38 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
                 </div>
               </div>
             ))
+          ) : (
+            <div className="py-16 px-6 text-center text-surface-500 dark:text-surface-400">
+              <span className="text-3xl block mb-3">🗂️</span>
+              <p className="text-sm">
+                Esta materia todavía no tiene módulos con temas registrados en el grafo curricular.
+              </p>
+            </div>
+          )}
+
+          {/* Navegación entre módulos */}
+          {modules.length > 1 && activeModule && (
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => goToModule(activeModuleIndex - 1)}
+                disabled={activeModuleIndex <= 0}
+                className="px-4 py-2 rounded-xl text-xs font-semibold border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                ← Módulo anterior
+              </button>
+              <span className="text-xs text-surface-400 font-mono">
+                {activeModuleIndex + 1} / {modules.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => goToModule(activeModuleIndex + 1)}
+                disabled={activeModuleIndex >= modules.length - 1}
+                className="px-4 py-2 rounded-xl text-xs font-semibold border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Módulo siguiente →
+              </button>
+            </div>
           )}
         </div>
 

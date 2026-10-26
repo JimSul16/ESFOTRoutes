@@ -1,11 +1,11 @@
 import { forwardRef, type InputHTMLAttributes } from 'react';
-import type { IconComponent } from './types';
+import type { IconType } from 'react-icons';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
   /** Icono de `react-icons` renderizado dentro del campo. */
-  icon?: IconComponent;
+  icon?: IconType;
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(

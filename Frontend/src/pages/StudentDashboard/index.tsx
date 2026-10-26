@@ -21,19 +21,23 @@ import RouteDetails from './components/RouteDetails';
 import Chatbot from './components/Chatbot';
 import RoutesViewer from './components/RoutesViewer';
 import StudentProfile from './components/StudentProfile';
-import RouteGenerator from './components/RouteGenerator';
 import SelfDiagnosisModal from './components/SelfDiagnosisModal';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import Recommendations from './components/Recommendations';
 
-/** Pestañas del panel del estudiante. */
+/**
+ * Pestañas del panel del estudiante.
+ *
+ * No existe una pestaña de creación de rutas: la ruta personalizada del
+ * estudiante se genera únicamente desde el autodiagnóstico (`SelfDiagnosisModal`),
+ * que es el flujo oficial y el único que respeta el grafo curricular.
+ */
 export type StudentTab =
   | 'inicio'
   | 'explorar'
   | 'mis-rutas'
   | 'perfil'
   | 'analytics'
-  | 'crear-ruta'
   | 'detalle-ruta';
 
 export type Theme = 'light' | 'dark';
@@ -284,6 +288,7 @@ const StudentDashboard = () => {
           <RoutesViewer
             key={routesRefreshKey}
             setActiveTab={setActiveTab}
+            onOpenSelfDiagnosis={() => setShowSelfDiagnosis(true)}
             onSelectRoute={(route) => {
               setSelectedRoute(route);
               setPreviousTab('mis-rutas');
@@ -303,13 +308,6 @@ const StudentDashboard = () => {
         );
       case 'analytics':
         return <AnalyticsDashboard userData={user} />;
-      case 'crear-ruta':
-        return (
-          <RouteGenerator
-            onBack={() => setActiveTab('mis-rutas')}
-            onRouteGenerated={handleRouteGenerated}
-          />
-        );
       case 'detalle-ruta':
         return (
           <RouteDetails

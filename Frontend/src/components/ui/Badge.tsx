@@ -2,6 +2,7 @@ import type { HTMLAttributes } from 'react';
 
 const variants = {
   default: 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300 border border-surface-200/80 dark:border-surface-700',
+  brand: 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300 border border-brand-200/80 dark:border-brand-500/20',
   primary: 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300 border border-primary-200/80 dark:border-primary-500/20',
   success: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-500/20',
   warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200/80 dark:border-amber-500/20',

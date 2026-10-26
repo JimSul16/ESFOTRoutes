@@ -123,3 +123,84 @@ describe('SelfDiagnosisModal — contador real de temas evaluados', () => {
     ]);
   });
 });
+
+const MODULOS_AGRUPADOS = [
+  {
+    id: 'redes-m1',
+    name: 'Módulo 1: Fundamentos y Arquitecturas de Red',
+    position: 1,
+    topics: [{ id: 'redes-intro', name: 'Tema del módulo uno' }],
+  },
+  {
+    id: 'redes-m2',
+    name: 'Módulo 2: Seguridad y Protocolos',
+    position: 2,
+    topics: [
+      { id: 'redes-seg-a', name: 'Tema A del módulo dos' },
+      { id: 'redes-seg-b', name: 'Tema B del módulo dos' },
+    ],
+  },
+];
+
+describe('SelfDiagnosisModal — agrupación visual por módulo', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSubjects.mockResolvedValue([MATERIA]);
+    mockTopics.mockResolvedValue(MODULOS_AGRUPADOS);
+    mockSubmit.mockResolvedValue({ message: 'ok', savedCount: 3 });
+  });
+
+  it('crea una pestaña por módulo del grafo', async () => {
+    renderModal();
+
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(2));
+    expect(screen.getByRole('tab', { name: /Módulo 1/ })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Módulo 2/ })).toBeTruthy();
+  });
+
+  // Antes se listaban todos los módulos seguidos: con el grafo curricular
+  // completo el modal era ilegible.
+  it('solo renderiza los temas del módulo activo', async () => {
+    renderModal();
+
+    await waitFor(() => expect(screen.getByText('Tema del módulo uno')).toBeTruthy());
+    expect(screen.queryByText('Tema A del módulo dos')).toBeNull();
+    expect(screen.queryByText('Tema B del módulo dos')).toBeNull();
+  });
+
+  it('al cambiar de pestaña muestra los temas del otro módulo', async () => {
+    renderModal();
+
+    await waitFor(() => expect(screen.getByText('Tema del módulo uno')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('tab', { name: /Módulo 2/ }));
+
+    expect(screen.getByText('Tema A del módulo dos')).toBeTruthy();
+    expect(screen.queryByText('Tema del módulo uno')).toBeNull();
+  });
+
+  it('cada pestaña lleva su propio contador de temas evaluados', async () => {
+    renderModal();
+
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(2));
+
+    // El módulo 1 tiene un solo tema: al calificarlo, su pestaña se marca
+    // como completada mientras el módulo 2 sigue en 0/2.
+    fireEvent.click(screen.getByTitle('5 - Avanzado'));
+
+    await waitFor(() => expect(screen.getByText(/1\/1/)).toBeTruthy());
+    expect(screen.getByText('0/2')).toBeTruthy();
+  });
+
+  it('la navegación entre módulos salta al módulo anterior y siguiente', async () => {
+    renderModal();
+
+    await waitFor(() => expect(screen.getByText('Tema del módulo uno')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: /Módulo siguiente/i }));
+    expect(screen.getByText('Tema A del módulo dos')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Módulo anterior/i }));
+    expect(screen.getByText('Tema del módulo uno')).toBeTruthy();
+  });
+});

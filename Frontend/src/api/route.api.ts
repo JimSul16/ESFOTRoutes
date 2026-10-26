@@ -73,18 +73,3 @@ export const completeModule = async (
   const response = await httpClient.post<CompleteModuleResponse>('/routes/complete-module', data);
   return response.data;
 };
-
-/**
- * El endpoint espera multipart con el campo `file` (multer en route.routes.js),
- * no `coverImage`: quien llama debe armar el FormData accordingly.
- */
-export const generateRoute = async (formData: FormData): Promise<RouteMutationResponse> => {
-  const response = await httpClient.post<{ message: string; route: RawLearningRoute }>(
-    '/routes/generate',
-    formData,
-    {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }
-  );
-  return { ...response.data, route: normalizeRoute(response.data.route) };
-};

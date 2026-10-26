@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { getMyRoutes } from '../../../api/route.api';
 import RoutesViewer from './RoutesViewer';
 import type { LearningRoute } from '../../../types';
@@ -30,6 +30,7 @@ describe('RoutesViewer — avance de la ruta', () => {
       <RoutesViewer
         setActiveTab={vi.fn()}
         onSelectRoute={vi.fn()}
+        onOpenSelfDiagnosis={vi.fn()}
       />
     );
 
@@ -73,5 +74,59 @@ describe('RoutesViewer — avance de la ruta', () => {
     await waitFor(() => {
       expect(screen.queryByText('Ruta de Redes')).toBeNull();
     });
+  });
+});
+
+describe('RoutesViewer — un único camino para crear rutas', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * Regresión: el botón "Nueva Ruta Personalizada" navegaba a la pestaña
+   * `crear-ruta`, que ejecutaba el generador IA (`POST /routes/generate`).
+   * Ese camino se eliminó: la ruta personalizada del estudiante se genera
+   * solo desde el autodiagnóstico curricular.
+   */
+  it('el botón de ruta personalizada abre el autodiagnóstico', async () => {
+    mockGetMyRoutes.mockResolvedValue([ruta()]);
+    const onOpenSelfDiagnosis = vi.fn();
+
+    render(
+      <RoutesViewer
+        setActiveTab={vi.fn()}
+        onSelectRoute={vi.fn()}
+        onOpenSelfDiagnosis={onOpenSelfDiagnosis}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText('Ruta de Redes')).toBeTruthy());
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Autodiagnóstico y Ruta Adaptativa/i })
+    );
+
+    expect(onOpenSelfDiagnosis).toHaveBeenCalledTimes(1);
+  });
+
+  it('el estado vacío también ofrece el autodiagnóstico', async () => {
+    mockGetMyRoutes.mockResolvedValue([]);
+    const onOpenSelfDiagnosis = vi.fn();
+
+    render(
+      <RoutesViewer
+        setActiveTab={vi.fn()}
+        onSelectRoute={vi.fn()}
+        onOpenSelfDiagnosis={onOpenSelfDiagnosis}
+      />
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText('Aún no estás inscrito en ninguna ruta')).toBeTruthy()
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Autodiagnóstico$/i }));
+
+    expect(onOpenSelfDiagnosis).toHaveBeenCalledTimes(1);
   });
 });

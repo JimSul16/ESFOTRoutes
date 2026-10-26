@@ -62,7 +62,6 @@ export {
   getMyRoutes,
   enrollRoute,
   completeModule,
-  generateRoute,
 } from './route.api';
 export type { RouteMutationResponse } from './route.api';
 

@@ -5,6 +5,12 @@ import { z } from 'zod';
 import { toast } from 'react-toastify';
 import { createUser, updateUser } from '../../../api/admin.api';
 import { getApiErrorMessage } from '../../../api/errors';
+import {
+  ALLOWED_EMAIL_DOMAIN_ERROR,
+  ALLOWED_EMAIL_DOMAINS_TEXT,
+  isAllowedEmailDomain,
+  normalizeEmail,
+} from '../../../utils/email';
 import type { User } from '../../../types';
 
 export interface UserFormModalProps {
@@ -21,8 +27,12 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
       .string()
       .min(1, "El correo es obligatorio")
       .email("Correo inválido")
-      .refine((val) => val.endsWith("@epn.edu.ec"), {
-        message: "Usa un correo institucional (@epn.edu.ec)",
+      // Se admiten los mismos dominios que el backend (`auth.controller.js`):
+      // el institucional de la EPN y Gmail. Antes solo se aceptaba
+      // `@epn.edu.ec`, así que el admin no podía dar de alta a un usuario con
+      // correo personal pese a que el registro público sí lo permitía.
+      .refine(isAllowedEmailDomain, {
+        message: ALLOWED_EMAIL_DOMAIN_ERROR,
       }),
     password: userToEdit 
       ? z.string().optional() 
@@ -62,11 +72,17 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
   }, [userToEdit, reset]);
 
   const onSubmit = async (dataForm: UserFormValues) => {
+    // Se normaliza el correo (recortar + minúsculas) antes de mandarlo: la
+    // columna `User.email` es UNIQUE y SQLite compara TEXT distinguiendo
+    // mayúsculas, así que `Ana@Gmail.com` y `ana@gmail.com` serían dos
+    // usuarios distintos y el segundo no podría iniciar sesión.
+    const email = normalizeEmail(dataForm.email);
+
     try {
       if (userToEdit) {
         const res = await updateUser(userToEdit.id, {
           name: dataForm.name,
-          email: dataForm.email,
+          email,
           password: dataForm.password,
           roleName: dataForm.roleName,
         });
@@ -81,7 +97,7 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
 
         const res = await createUser({
           name: dataForm.name,
-          email: dataForm.email,
+          email,
           password: dataForm.password,
           roleName: dataForm.roleName,
         });
@@ -103,10 +119,11 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
         <h2 className="text-xl font-display font-bold mb-4 text-surface-900 dark:text-white">
           {userToEdit ? 'Editar Usuario' : 'Crear Usuario'}
         </h2>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Nombre</label>
+            <label htmlFor="user-name" className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Nombre</label>
             <input
+              id="user-name"
               type="text"
               className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.name ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-sm`}
               {...register("name")}
@@ -115,19 +132,28 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Correo Institucional</label>
+            <label htmlFor="user-email" className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Correo Electrónico</label>
             <input
+              id="user-email"
               type="email"
+              placeholder="usuario@epn.edu.ec"
               className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.email ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-sm`}
               {...register("email")}
             />
-            {errors.email && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.email.message}</p>}
+            {errors.email ? (
+              <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.email.message}</p>
+            ) : (
+              <p className="text-surface-400 dark:text-surface-500 text-xs mt-1.5">
+                Dominios permitidos: {ALLOWED_EMAIL_DOMAINS_TEXT}
+              </p>
+            )}
           </div>
           
             <>
               <div>
-                <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Contraseña</label>
+                <label htmlFor="user-password" className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Contraseña</label>
                 <input
+                  id="user-password"
                   type="password"
                   className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.password ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-sm`}
                   {...register("password")}
@@ -136,8 +162,9 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Rol</label>
+                <label htmlFor="user-role" className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Rol</label>
                 <select
+                  id="user-role"
                   className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.roleName ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all appearance-none text-sm`}
                   {...register("roleName")}
                 >

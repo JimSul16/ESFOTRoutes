@@ -8,14 +8,18 @@ import { login as loginRequest, isLoginSuccess } from "../../api/auth.api";
 import { getApiErrorMessage } from "../../api/errors";
 import { MdVisibility, MdVisibilityOff } from "react-icons/md";
 import { useAuth } from "../../hooks/useAuth";
+import { ALLOWED_EMAIL_DOMAIN_ERROR, isAllowedEmailDomain, normalizeEmail } from "../../utils/email";
 
 const loginSchema = z.object({
   email: z
     .string()
     .min(1, "El correo es obligatorio")
     .email("Correo electrónico inválido")
-    .refine((val) => val.endsWith("@epn.edu.ec") || val.endsWith("@gmail.com"), {
-      message: "Usa tu correo institucional (@epn.edu.ec) o @gmail.com",
+    // Mismos dominios que el panel de admin y que el backend: EPN y Gmail.
+    // La comparación es insensible a mayúsculas, así que un correo guardado
+    // como `Ana@Gmail.com` sigue siendo válido para iniciar sesión.
+    .refine(isAllowedEmailDomain, {
+      message: ALLOWED_EMAIL_DOMAIN_ERROR,
     }),
   password: z
     .string()
@@ -62,7 +66,10 @@ const Login = () => {
 
     setLoading(true);
     try {
-      const res = await loginRequest(dataForm);
+      // El correo se normaliza antes de enviarlo: el backend busca con
+      // `WHERE email = ?` y SQLite compara TEXT distinguiendo mayúsculas, así
+      // que `Ana@Gmail.com` no emparejaría con el `ana@gmail.com` guardado.
+      const res = await loginRequest({ ...dataForm, email: normalizeEmail(dataForm.email) });
 
       // OJO: `httpClient` acepta cualquier status 2xx, así que el 206 del
       // backend (OTP requerido) RESUELVE, no lanza. Por eso el caso se
@@ -97,7 +104,7 @@ const Login = () => {
 
     setResending(true);
     try {
-      const res = await loginRequest({ email, password });
+      const res = await loginRequest({ email: normalizeEmail(email), password });
       // Siempre llega un 206 con el aviso; se limpia el campo por si el
       // usuario ya había escrito un código que quedó obsoleto.
       setValue("otp", "");

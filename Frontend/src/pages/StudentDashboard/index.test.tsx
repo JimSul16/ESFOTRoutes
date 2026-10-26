@@ -114,3 +114,56 @@ describe('StudentDashboard — carga del perfil', () => {
     });
   });
 });
+
+describe('StudentDashboard — un único camino para rutas personalizadas', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetMyRoutes.mockResolvedValue([]);
+  });
+
+  /**
+   * Regresión: el panel tenía una pestaña `crear-ruta` con el generador IA
+   * (`POST /routes/generate`), además del autodiagnóstico. Se eliminó el
+   * generador: solo queda el autodiagnóstico curricular.
+   */
+  it('"Mis Rutas" ofrece el autodiagnóstico y no el generador IA', async () => {
+    mockGetProfile.mockResolvedValue(ESTUDIANTE);
+    montar();
+
+    await waitFor(() => expect(screen.getByText('Ana Delgado')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mis Rutas' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Autodiagnóstico y Ruta Adaptativa/i })
+      ).toBeTruthy();
+    });
+
+    expect(screen.queryByText('Nueva Ruta Personalizada')).toBeNull();
+    expect(screen.queryByText('Generador de Rutas IA')).toBeNull();
+  });
+
+  it('el botón de ruta personalizada abre el autodiagnóstico', async () => {
+    mockGetProfile.mockResolvedValue(ESTUDIANTE);
+    montar();
+
+    await waitFor(() => expect(screen.getByText('Ana Delgado')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mis Rutas' }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Autodiagnóstico y Ruta Adaptativa/i })
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Autodiagnóstico y Ruta Adaptativa/i })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Autodiagnóstico Curricular')).toBeTruthy();
+    });
+  });
+});
