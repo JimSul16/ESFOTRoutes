@@ -159,7 +159,7 @@ export const unlockUser = async (req, res) => {
     }
 
     // Reinicia TODO el estado de bloqueo (isLocked, lockoutUntil,
-    // lockoutCount, failedAttempts y otpAttempts).
+    // lockoutCount y failedAttempts).
     await clearLockoutState(userId);
 
     res.json({ message: `Cuenta de ${result.rows[0].email} desbloqueada exitosamente.` });

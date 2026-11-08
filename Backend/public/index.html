@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Portal ESFOT - Pruebas de Autenticación & 2FA</title>
+  <title>Portal ESFOT - Verificación de Acceso</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,7 +24,7 @@
         </svg>
       </div>
       <h1 class="text-2xl font-bold tracking-tight text-white">ESFOT Learning Routes</h1>
-      <p class="text-sm text-slate-400 mt-1">Portal de verificación de credenciales y 2FA (OTP)</p>
+      <p class="text-sm text-slate-400 mt-1">Portal institucional de autenticación</p>
     </div>
 
     <!-- Card Contenedor -->
@@ -46,7 +46,7 @@
         <div id="alertMessage" class="flex-1 text-sm font-medium"></div>
       </div>
 
-      <!-- ── VISTA 1: FORMULARIO DE LOGIN (Paso 1: Credenciales) ── -->
+      <!-- ── VISTA 1: FORMULARIO DE LOGIN DIRECTO ── -->
       <form id="loginForm" class="space-y-4">
         <div>
           <label for="loginEmail" class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
@@ -85,67 +85,14 @@
           id="btnLoginSubmit"
           class="w-full mt-2 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span>Continuar</span>
+          <span>Iniciar Sesión</span>
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
           </svg>
         </button>
       </form>
 
-      <!-- ── VISTA 2: FORMULARIO DE OTP (Paso 2: Código 2FA) ── -->
-      <div id="otpSection" class="hidden space-y-4">
-        <div class="text-center py-2">
-          <div class="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 mx-auto flex items-center justify-center mb-2">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-            </svg>
-          </div>
-          <h3 class="text-lg font-semibold text-white">Verificación en Dos Pasos (OTP)</h3>
-          <p class="text-xs text-slate-400 mt-1">
-            Introduce el código de 6 dígitos enviado a tu correo o registrado en el sistema.
-          </p>
-        </div>
-
-        <div>
-          <label for="otpInput" class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 text-center">
-            Código de Verificación (6 dígitos)
-          </label>
-          <input 
-            type="text" 
-            id="otpInput" 
-            maxlength="6"
-            pattern="[0-9]{6}"
-            inputmode="numeric"
-            placeholder="000000" 
-            class="w-full text-center tracking-[0.5em] text-2xl font-mono py-3 px-4 rounded-xl bg-slate-900/80 border border-slate-700 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-emerald-400 placeholder-slate-600 outline-none transition"
-            required
-          >
-          <p class="text-xs text-slate-500 text-center mt-2">
-            * En modo desarrollo, puedes ver este código en la terminal del backend.
-          </p>
-        </div>
-
-        <button 
-          type="button" 
-          id="btnOtpSubmit"
-          class="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-        >
-          <span>Validar Código & Entrar</span>
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-          </svg>
-        </button>
-
-        <button 
-          type="button" 
-          id="btnOtpBack"
-          class="w-full py-2 text-xs text-slate-400 hover:text-slate-200 transition text-center"
-        >
-          ← Regresar al login
-        </button>
-      </div>
-
-      <!-- ── VISTA 3: PERFIL AUTENTICADO ── -->
+      <!-- ── VISTA 2: PERFIL AUTENTICADO ── -->
       <div id="profileSection" class="hidden space-y-4">
         <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-700 space-y-3">
           <div class="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -271,11 +218,6 @@
       const loginPassword = document.getElementById('loginPassword');
       const btnLoginSubmit = document.getElementById('btnLoginSubmit');
 
-      const otpSection = document.getElementById('otpSection');
-      const otpInput = document.getElementById('otpInput');
-      const btnOtpSubmit = document.getElementById('btnOtpSubmit');
-      const btnOtpBack = document.getElementById('btnOtpBack');
-
       const profileSection = document.getElementById('profileSection');
       const profileName = document.getElementById('profileName');
       const profileEmail = document.getElementById('profileEmail');
@@ -317,7 +259,6 @@
       function setView(view) {
         hideAlert();
         loginForm.classList.add('hidden');
-        otpSection.classList.add('hidden');
         profileSection.classList.add('hidden');
         registerForm.classList.add('hidden');
         tabsContainer.classList.add('hidden');
@@ -327,10 +268,6 @@
           tabsContainer.classList.remove('hidden');
           tabLoginBtn.className = 'text-indigo-400 border-b-2 border-indigo-500 pb-2 transition-colors';
           tabRegisterBtn.className = 'text-slate-400 hover:text-slate-200 pb-2 transition-colors';
-        } else if (view === 'otp') {
-          otpSection.classList.remove('hidden');
-          otpInput.value = '';
-          otpInput.focus();
         } else if (view === 'profile') {
           profileSection.classList.remove('hidden');
         } else if (view === 'register') {
@@ -371,7 +308,7 @@
         }
       }
 
-      // ── Evento: Enviar Paso 1 (Credenciales) ───────────────────────────────
+      // ── Evento: Enviar Login Directo ──────────────────────────────────────
       loginForm.addEventListener('submit', async function(e) {
         e.preventDefault();
         hideAlert();
@@ -386,7 +323,7 @@
 
         currentCredentials = { email, password };
         btnLoginSubmit.disabled = true;
-        btnLoginSubmit.querySelector('span').textContent = 'Comprobando...';
+        btnLoginSubmit.querySelector('span').textContent = 'Ingresando...';
 
         try {
           const res = await fetch('/api/auth/login', {
@@ -397,12 +334,7 @@
 
           const data = await res.json();
 
-          if (res.status === 206) {
-            // Requiere OTP (Paso 2)
-            showAlert('warning', data.message || 'Código OTP requerido.');
-            setView('otp');
-          } else if (res.ok && data.token) {
-            // Login directo sin OTP (si alguna vez se deshabilita)
+          if (res.ok && data.token) {
             authToken = data.token;
             sessionStorage.setItem('token', authToken);
             showAlert('success', 'Sesión iniciada correctamente.');
@@ -414,54 +346,8 @@
           showAlert('error', 'Error al conectar con el servidor.');
         } finally {
           btnLoginSubmit.disabled = false;
-          btnLoginSubmit.querySelector('span').textContent = 'Continuar';
+          btnLoginSubmit.querySelector('span').textContent = 'Iniciar Sesión';
         }
-      });
-
-      // ── Evento: Enviar Paso 2 (Validar OTP) ────────────────────────────────
-      btnOtpSubmit.addEventListener('click', async function() {
-        hideAlert();
-        const otp = otpInput.value.trim();
-
-        if (!otp || otp.length !== 6) {
-          showAlert('error', 'Ingresa los 6 dígitos del código de verificación.');
-          return;
-        }
-
-        btnOtpSubmit.disabled = true;
-        btnOtpSubmit.querySelector('span').textContent = 'Validando OTP...';
-
-        try {
-          const res = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: currentCredentials.email,
-              password: currentCredentials.password,
-              otp: otp
-            })
-          });
-
-          const data = await res.json();
-
-          if (res.ok && data.token) {
-            authToken = data.token;
-            sessionStorage.setItem('token', authToken);
-            showAlert('success', '¡Autenticación completada con éxito!');
-            await loadProfile();
-          } else {
-            showAlert('error', data.message || data.error || 'Código OTP inválido o expirado.');
-          }
-        } catch (err) {
-          showAlert('error', 'Error al verificar el código OTP.');
-        } finally {
-          btnOtpSubmit.disabled = false;
-          btnOtpSubmit.querySelector('span').textContent = 'Validar Código & Entrar';
-        }
-      });
-
-      btnOtpBack.addEventListener('click', function() {
-        setView('login');
       });
 
       // ── Evento: Registro ──────────────────────────────────────────────────

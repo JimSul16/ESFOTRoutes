@@ -2,8 +2,8 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { turso } from '../config/turso.js';
-import { registerUser, generateOTP, verifyOTP, clearLockoutState, registerFailedOtpAttempt, getAdminEmails } from '../services/auth.service.js';
-import { sendVerificationEmail, sendPasswordResetEmail, sendOTPEmail, sendAdminLockoutAlertEmail, getFrontendUrl } from '../services/email.service.js';
+import { registerUser, clearLockoutState, getAdminEmails } from '../services/auth.service.js';
+import { sendVerificationEmail, sendPasswordResetEmail, sendAdminLockoutAlertEmail, getFrontendUrl } from '../services/email.service.js';
 import { escapeHtml, isValidEmail } from '../utils/index.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,12 +60,7 @@ const parseUserAgent = (userAgent) => {
 
 /**
  * Registra un intento fallido de PASSWORD para un usuario y aplica bloqueo
- * temporal o crítico si corresponde.
- *
- * Solo cuenta contraseñas incorrectas. Los códigos OTP (2FA) llevan su propio
- * contador (ver handleFailedOtpAttempt) porque un código mal escrito no es un
- * ataque de fuerza bruta: antes ambos compartían contador y bastaban 3
- * equivocaciones con el OTP para dejar la cuenta bloqueada.
+ * temporal o permanente si corresponde tras superar los límites establecidos.
  */
 const handleFailedAttempt = async (user, req, res, reasonMessage) => {
   const currentAttempts = (user.failedAttempts || 0) + 1;
@@ -149,56 +144,6 @@ const handleFailedAttempt = async (user, req, res, reasonMessage) => {
   });
 };
 
-/**
- * Registra un intento fallido de OTP (2FA).
- *
- * NO bloquea la cuenta: solo invalida el código vigente y pide uno nuevo.
- * Antes un OTP mal escrito consumía los 3 intentos de contraseña y terminaba
- * en un bloqueo temporal/permanente, dejando al usuario sin poder entrar
- * aunque la contraseña fuera correcta.
- */
-const handleFailedOtpAttempt = async (user, res, reason) => {
-  const MAX_OTP_ATTEMPTS = 5;
-
-  // No hay ningún código pendiente: el usuario solo tiene que pedir uno nuevo.
-  // No cuenta como intento fallido (no hubo nada que adivinar).
-  if (reason === 'no-otp' || reason === 'no-user') {
-    return res.status(401).json({
-      message: reason === 'no-otp'
-        ? 'No hay ningún código de verificación pendiente. Vuelve a iniciar sesión para que te enviemos uno.'
-        : 'El código de verificación no es correcto.',
-      requiresNewOtp: true
-    });
-  }
-
-  const attempts = await registerFailedOtpAttempt(user.id);
-  const remaining = MAX_OTP_ATTEMPTS - attempts;
-
-  // Al agotar los intentos se invalida el código: hay que pedir uno nuevo.
-  // (Se permite MAX_OTP_ATTEMPTS intentos fallidos; el siguiente lo corta.)
-  if (attempts > MAX_OTP_ATTEMPTS) {
-    await turso.execute({
-      sql: `UPDATE User SET otpCode = NULL, otpExpiresAt = NULL, otpAttempts = 0 WHERE id = ?`,
-      args: [user.id]
-    });
-
-    return res.status(429).json({
-      error: 'Has agotado los intentos del código de verificación. Se ha generado un código nuevo; revisa tu correo.',
-      otpAttemptsExceeded: true
-    });
-  }
-
-  const messages = {
-    expired: 'El código de verificación expiró. Solicita uno nuevo.',
-    invalid: 'El código de verificación no es correcto.'
-  };
-
-  return res.status(401).json({
-    message: `${messages[reason] || messages.invalid} Te quedan ${remaining} intento(s) para el código.`,
-    remainingOtpAttempts: Math.max(remaining, 0)
-  });
-};
-
 // ─── Controladores ────────────────────────────────────────────────────────────
 
 export const register = async (req, res) => {
@@ -278,7 +223,7 @@ export const verifyAccount = async (req, res) => {
 
 export const login = async (req, res) => {
   try {
-    const { email, password, otp } = req.body;
+    const { email, password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({ message: 'El correo y la contraseña son obligatorios' });
@@ -298,8 +243,6 @@ export const login = async (req, res) => {
     const user = result.rows[0];
 
     // ── Comprobación 0: Cuenta desactivada ───────────────────────────────────
-    // `toggleUserStatus` (panel admin) desactiva cuentas, pero el login nunca
-    // lo comprobaba: un usuario desactivado podía iniciar sesión igual.
     if (!user.isActive) {
       return res.status(403).json({
         error: 'Tu cuenta está desactivada. Contacta al Administrador para reactivarla.',
@@ -344,46 +287,9 @@ export const login = async (req, res) => {
       return await handleFailedAttempt(user, req, res, 'Credenciales incorrectas');
     }
 
-    // La contraseña es correcta: se limpia el contador de contraseñas fallidas.
-    // No tiene sentido seguir contando fallos de una contraseña que sí es la
-    // buena (p. ej. el usuario la tecleó mal una vez y luego la acertó).
-    await turso.execute({
-      sql: `UPDATE User SET failedAttempts = 0 WHERE id = ?`,
-      args: [user.id]
-    });
-
-    // ── 2FA OTP ──────────────────────────────────────────────────────────────
-    const is2FAEnabled = process.env.REQUIRE_2FA === 'true';
-
-    if (is2FAEnabled) {
-      if (!otp) {
-        const generatedOtp = await generateOTP(normalizedEmail);
-        console.log(`🔑 [2FA OTP] Código generado para [${normalizedEmail}]: ${generatedOtp}`);
-        const delivery = await sendOTPEmail(normalizedEmail, user.name, generatedOtp);
-
-      // Si el correo NO salió hay que decirlo: responder "código enviado" sin
-      // haberlo enviado era el motivo de que el usuario se quedara esperando
-      // un código que nunca llegaba y acabara bloqueado por reintentos.
-      if (!delivery?.ok) {
-        console.error(`⚠️ No se pudo entregar el OTP a [${normalizedEmail}]:`, delivery?.error);
-        return res.status(503).json({
-          error: 'No se pudo enviar el código de verificación por correo. Revisa tu bandeja de entrada (incluida la carpeta de spam) o contacta al Administrador.',
-          otpDeliveryFailed: true
-        });
-      }
-
-      return res.status(206).json({ message: 'OTP requerido. Se ha enviado un código a su correo.' });
-    }
-
-    const otpCheck = await verifyOTP(normalizedEmail, otp);
-    if (!otpCheck.valid) {
-      return await handleFailedOtpAttempt(user, res, otpCheck.reason);
-    }
-    }
-
     // ── Login Exitoso: Resetear contadores de fallos y bloqueos ───────────────
     await turso.execute({
-      sql: `UPDATE User SET failedAttempts = 0, lockoutUntil = NULL, lockoutCount = 0, otpAttempts = 0 WHERE id = ?`,
+      sql: `UPDATE User SET failedAttempts = 0, lockoutUntil = NULL, lockoutCount = 0 WHERE id = ?`,
       args: [user.id]
     });
 

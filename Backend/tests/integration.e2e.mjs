@@ -2,7 +2,7 @@
  * Prueba de integración real de punta a punta (Backend + Neo4j + Frontend API).
  *
  * Simula el recorrido completo de un estudiante:
- *   registro → login 2FA → autodiagnóstico → ruta adaptativa → completar
+ *   registro → login → autodiagnóstico → ruta adaptativa → completar
  *   módulo → recomendaciones → chat GraphRAG → analítica semanal.
  *
  * Verifica en cada paso el código de estado Y el efecto real en el grafo.
@@ -66,20 +66,15 @@ try {
     else mal(`verificación: ${ver.status}`);
   }
 
-  // ── 2 · Login con 2FA ────────────────────────────────────────────────────
-  seccion('2 · LOGIN CON 2FA');
+  // ── 2 · Login ────────────────────────────────────────────────────────────
+  seccion('2 · LOGIN');
   const l1 = await call('POST', '/api/auth/login', { body: { email, password } });
-  if (l1.status === 206) ok('login paso 1 → 206 (pide OTP)');
-  else mal(`login paso 1: ${l1.status}`, JSON.stringify(l1.data));
-
-  const otp = (await db.execute('SELECT otpCode FROM User WHERE email = ?', [email])).rows[0]?.otpCode;
-  const l2 = await call('POST', '/api/auth/login', { body: { email, password, otp } });
-  if (l2.status === 200 && l2.data.token) {
-    token = l2.data.token;
-    ok('login paso 2 → 200 (token obtained)');
-    userId = l2.data.user?.id;
+  if (l1.status === 200 && l1.data.token) {
+    token = l1.data.token;
+    ok('login directo → 200 (token obtenido)');
+    userId = l1.data.user?.id;
   } else {
-    mal(`login paso 2: ${l2.status}`, JSON.stringify(l2.data));
+    mal(`login: ${l1.status}`, JSON.stringify(l1.data));
   }
 
   // ── 3 · Catálogo del grafo ───────────────────────────────────────────────

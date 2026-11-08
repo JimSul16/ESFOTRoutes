@@ -229,37 +229,7 @@ export const sendEmail = async ({ to, subject, html }) => {
   }
 };
 
-// ── 1. Correo de Código 2FA / OTP ─────────────────────────────────────────────
-/**
- * @returns {Promise<{ ok: boolean, error?: string }>} para que el login pueda
- * avisar al usuario cuando el código NO llegó a enviarse.
- */
-export const sendOTPEmail = async (email, name, otpCode) => {
-  try {
-    const subject = "Tu código de verificación de inicio de sesión - ESFOT";
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-        <h2 style="color: #1e3a8a; text-align: center; margin-bottom: 8px;">Código de Acceso 2FA</h2>
-        <p style="color: #475569; font-size: 14px; text-align: center;">Hola ${name || 'Usuario'}, ingresa el siguiente código para completar tu inicio de sesión en la plataforma ESFOT:</p>
-        
-        <div style="background-color: #f1f5f9; border: 2px dashed #cbd5e1; border-radius: 10px; padding: 18px; margin: 25px 0; text-align: center;">
-          <span style="font-family: 'Courier New', monospace; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #0f172a;">${otpCode}</span>
-        </div>
-
-        <p style="color: #64748b; font-size: 12px; text-align: center;">Este código es de un solo uso y expirará en <strong>10 minutos</strong>.</p>
-        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-        <p style="color: #94a3b8; font-size: 11px; text-align: center;">Si tú no intentaste iniciar sesión, ignora este mensaje.</p>
-      </div>
-    `;
-
-    return await sendEmail({ to: email, subject, html });
-  } catch (error) {
-    console.error("⚠️ Error enviando correo OTP:", error.message);
-    return { ok: false, error: error.message };
-  }
-};
-
-// ── 2. Correo de Verificación de Cuenta ───────────────────────────────────────
+// ── 1. Correo de Verificación de Cuenta ───────────────────────────────────────
 export const sendVerificationEmail = async (email, token) => {
   try {
     const verificationLink = `${getFrontendUrl()}/confirm/${token}`;

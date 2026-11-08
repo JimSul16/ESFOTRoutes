@@ -41,8 +41,6 @@ export interface UserDashboard extends User {
 export interface LoginCredentials {
   email: string;
   password: string;
-  /** OTP de 6 dígitos; solo necesario en el segundo paso del login con 2FA. */
-  otp?: string;
 }
 
 export interface RegisterData {
@@ -58,17 +56,7 @@ export interface LoginSuccessResponse {
   user: User;
 }
 
-/**
- * Login que requiere segundo factor (HTTP 206).
- * El backend no devuelve token todavía: hay que reenviar `credentials` con `otp`.
- */
-export interface LoginOtpRequiredResponse {
-  message: string;
-  token?: undefined;
-  user?: undefined;
-}
-
-export type LoginResponse = LoginSuccessResponse | LoginOtpRequiredResponse;
+export type LoginResponse = LoginSuccessResponse;
 
 /** Respuesta genérica de endpoints que solo devuelven un mensaje. */
 export interface AuthMessageResponse {

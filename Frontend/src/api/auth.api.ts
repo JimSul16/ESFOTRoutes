@@ -29,17 +29,16 @@ export type {
 };
 
 /**
- * `POST /auth/login` devuelve 200 con token, o 206 cuando exige un segundo paso
- * con OTP. El discriminante es la presencia de `token`: úsalo antes de navegar.
+ * `POST /auth/login` devuelve 200 con token JWT y datos de usuario.
  */
 export const login = async (credentials: LoginCredentials): Promise<LoginResponse> => {
   const response = await httpClient.post<LoginResponse>('/auth/login', credentials);
   return response.data;
 };
 
-/** Narrowing helper: `true` solo cuando el login devolvió token. */
+/** Helper: confirma que el login devolvió token. */
 export const isLoginSuccess = (res: LoginResponse): res is LoginSuccessResponse =>
-  typeof res.token === 'string';
+  typeof res?.token === 'string';
 
 export const register = async (userData: RegisterData): Promise<AuthMessageResponse> => {
   const response = await httpClient.post<AuthMessageResponse>('/auth/register', userData);

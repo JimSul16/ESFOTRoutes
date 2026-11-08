@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "react-toastify";
-import { login as loginRequest, isLoginSuccess } from "../../api/auth.api";
+import { login as loginRequest } from "../../api/auth.api";
 import { getApiErrorMessage } from "../../api/errors";
 import { MdVisibility, MdVisibilityOff } from "react-icons/md";
 import { useAuth } from "../../hooks/useAuth";
@@ -24,7 +24,6 @@ const loginSchema = z.object({
   password: z
     .string()
     .min(1, "La contrasena es obligatoria"),
-  otp: z.string().optional(),
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
@@ -32,14 +31,12 @@ type LoginValues = z.infer<typeof loginSchema>;
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
-  const [requiresOtp, setRequiresOtp] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
 
   const navigate = useNavigate();
   const { loginAuth } = useAuth();
 
-  const { register, handleSubmit, getValues, setValue, formState: { errors } } = useForm({
+  const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(loginSchema)
   });
 
@@ -57,62 +54,22 @@ const Login = () => {
   };
 
   const onSubmit = async (dataForm: LoginValues) => {
-    // En el segundo paso el código es obligatorio. El esquema de zod no puede
-    // exigirlo porque está declarado fuera del componente y no ve `requiresOtp`.
-    if (requiresOtp && !/^\d{6}$/.test(dataForm.otp ?? "")) {
-      toast.error("Ingresa el código OTP de 6 dígitos.");
-      return;
-    }
-
     setLoading(true);
     try {
       // El correo se normaliza antes de enviarlo: el backend busca con
       // `WHERE email = ?` y SQLite compara TEXT distinguiendo mayúsculas, así
       // que `Ana@Gmail.com` no emparejaría con el `ana@gmail.com` guardado.
-      const res = await loginRequest({ ...dataForm, email: normalizeEmail(dataForm.email) });
+      const res = await loginRequest({
+        email: normalizeEmail(dataForm.email),
+        password: dataForm.password,
+      });
 
-      // OJO: `httpClient` acepta cualquier status 2xx, así que el 206 del
-      // backend (OTP requerido) RESUELVE, no lanza. Por eso el caso se
-      // discrimina por la presencia de `token` y no en el catch.
-      if (isLoginSuccess(res)) {
-        loginAuth(res.token, res.user);
-        navigate(res.user.roles?.includes("ADMIN") ? "/admin" : "/dashboard");
-        return;
-      }
-
-      setRequiresOtp(true);
-      toast.info(res.message);
+      loginAuth(res.token, res.user);
+      navigate(res.user.roles?.includes("ADMIN") ? "/admin" : "/dashboard");
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "No se pudo iniciar sesión."));
     } finally {
       setLoading(false);
-    }
-  };
-
-  /**
-   * Reenvía el código sin incluir `otp`: el backend vuelve a generar uno y
-   * responde 206. Necesario porque el OTP expira a los 10 minutos y, si el
-   * usuario cierra el formulario, no tiene forma de pedir otro.
-   */
-  const onResendOtp = async () => {
-    const { email, password } = getValues();
-
-    if (!email || !password) {
-      toast.error("Completa tu correo y contraseña antes de reenviar el código.");
-      return;
-    }
-
-    setResending(true);
-    try {
-      const res = await loginRequest({ email: normalizeEmail(email), password });
-      // Siempre llega un 206 con el aviso; se limpia el campo por si el
-      // usuario ya había escrito un código que quedó obsoleto.
-      setValue("otp", "");
-      toast.success(res.message ?? "Te enviamos un nuevo código por correo.");
-    } catch (error: unknown) {
-      toast.error(getApiErrorMessage(error, "No se pudo reenviar el código."));
-    } finally {
-      setResending(false);
     }
   };
 
@@ -194,38 +151,12 @@ const Login = () => {
             {errors.password && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.password.message}</p>}
           </div>
 
-          {requiresOtp && (
-            <div className="p-4 bg-brand-50/60 dark:bg-brand-950/30 rounded-2xl border border-brand-200 dark:border-brand-800/60 space-y-2">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-brand-900 dark:text-brand-200">Código OTP</label>
-              <input
-                type="text"
-                placeholder="123456"
-                maxLength={6}
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                className="w-full px-4 py-3 rounded-xl bg-white dark:bg-surface-900 border border-brand-300 dark:border-brand-700 text-surface-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all placeholder:text-surface-400 text-center font-mono text-lg tracking-widest font-bold"
-                {...register("otp")}
-              />
-              <p className="text-xs text-surface-600 dark:text-surface-400">
-                Te enviamos un código de 6 dígitos al correo. Expira en 10 minutos.
-              </p>
-              <button
-                type="button"
-                onClick={onResendOtp}
-                disabled={resending || loading}
-                className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline"
-              >
-                {resending ? "Reenviando..." : "¿No recibiste el código? Reenviar"}
-              </button>
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-xs hover:shadow-brand-500/20 text-sm"
           >
-            {loading ? "Verificando..." : requiresOtp ? "Verificar código" : "Iniciar Sesión"}
+            {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
             {!loading && <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>}
           </button>
         </form>

@@ -1,18 +1,28 @@
 import { jest } from '@jest/globals';
 
 describe('email.service — Multi-proveedor y resiliencia en producción', () => {
-  const originalEnv = process.env;
+  const originalEnv = { ...process.env };
   let emailService;
 
-  beforeEach(async () => {
-    jest.resetModules();
-    process.env = { ...originalEnv };
-    // Evitar que dotenv sobreescriba nuestros mocks en el test
+  beforeAll(async () => {
     emailService = await import('../src/services/email.service.js');
   });
 
+  beforeEach(() => {
+    delete process.env.MAIL_WEBHOOK_URL;
+    delete process.env.BREVO_API_KEY;
+    delete process.env.SENDGRID_API_KEY;
+    delete process.env.RESEND_API_KEY;
+    delete process.env.RENDER;
+  });
+
   afterAll(() => {
-    process.env = originalEnv;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) {
+        delete process.env[key];
+      }
+    }
+    Object.assign(process.env, originalEnv);
   });
 
   describe('getFrontendUrl', () => {
