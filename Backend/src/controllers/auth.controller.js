@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { turso } from '../config/turso.js';
 import { registerUser, generateOTP, verifyOTP, clearLockoutState, registerFailedOtpAttempt, getAdminEmails } from '../services/auth.service.js';
-import { sendVerificationEmail, sendPasswordResetEmail, sendOTPEmail, sendAdminLockoutAlertEmail } from '../services/email.service.js';
+import { sendVerificationEmail, sendPasswordResetEmail, sendOTPEmail, sendAdminLockoutAlertEmail, getFrontendUrl } from '../services/email.service.js';
 import { escapeHtml, isValidEmail } from '../utils/index.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -103,7 +103,7 @@ const handleFailedAttempt = async (user, req, res, reasonMessage) => {
     if (adminEmails.length) {
       // Apunta a la pantalla de la SPA, que muestra el resultado en el idioma
       // del usuario. El formulario HTML del GET queda como respaldo.
-      const unlockUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/desbloquear-cuenta/${unlockToken}`;
+      const unlockUrl = `${getFrontendUrl()}/desbloquear-cuenta/${unlockToken}`;
       await sendAdminLockoutAlertEmail({ adminEmails, user, ipAddress, deviceInfo, unlockUrl });
     } else {
       console.error(
@@ -230,10 +230,9 @@ export const register = async (req, res) => {
 
     const user = await registerUser({ name, email: normalizedEmail, password });
 
-    try {
-      await sendVerificationEmail(user.email, user.verificationToken);
-    } catch (emailError) {
-      console.error('Error al enviar email de verificación:', emailError.message);
+    const delivery = await sendVerificationEmail(user.email, user.verificationToken);
+    if (delivery && !delivery.ok) {
+      console.warn('⚠️ Error al enviar email de verificación:', delivery.error);
       return res.status(201).json({
         message: 'Usuario creado exitosamente en la BD, pero hubo un error al enviar el correo.',
         emailError: true
@@ -285,9 +284,11 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: 'El correo y la contraseña son obligatorios' });
     }
 
+    const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+
     const result = await turso.execute({
-      sql: `SELECT * FROM User WHERE email = ?`,
-      args: [email]
+      sql: `SELECT * FROM User WHERE LOWER(email) = ?`,
+      args: [normalizedEmail]
     });
 
     if (!result.rows.length) {
@@ -356,15 +357,15 @@ export const login = async (req, res) => {
 
     if (is2FAEnabled) {
       if (!otp) {
-        const generatedOtp = await generateOTP(email);
-        console.log(`🔑 [2FA OTP] Código generado para [${email}]: ${generatedOtp}`);
-        const delivery = await sendOTPEmail(email, user.name, generatedOtp);
+        const generatedOtp = await generateOTP(normalizedEmail);
+        console.log(`🔑 [2FA OTP] Código generado para [${normalizedEmail}]: ${generatedOtp}`);
+        const delivery = await sendOTPEmail(normalizedEmail, user.name, generatedOtp);
 
       // Si el correo NO salió hay que decirlo: responder "código enviado" sin
       // haberlo enviado era el motivo de que el usuario se quedara esperando
       // un código que nunca llegaba y acabara bloqueado por reintentos.
       if (!delivery?.ok) {
-        console.error(`⚠️ No se pudo entregar el OTP a [${email}]:`, delivery?.error);
+        console.error(`⚠️ No se pudo entregar el OTP a [${normalizedEmail}]:`, delivery?.error);
         return res.status(503).json({
           error: 'No se pudo enviar el código de verificación por correo. Revisa tu bandeja de entrada (incluida la carpeta de spam) o contacta al Administrador.',
           otpDeliveryFailed: true
@@ -374,7 +375,7 @@ export const login = async (req, res) => {
       return res.status(206).json({ message: 'OTP requerido. Se ha enviado un código a su correo.' });
     }
 
-    const otpCheck = await verifyOTP(email, otp);
+    const otpCheck = await verifyOTP(normalizedEmail, otp);
     if (!otpCheck.valid) {
       return await handleFailedOtpAttempt(user, res, otpCheck.reason);
     }
@@ -426,12 +427,19 @@ export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
 
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'El correo electrónico es obligatorio.' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
     const result = await turso.execute({
-      sql: `SELECT id, name FROM User WHERE email = ?`,
-      args: [email]
+      sql: `SELECT id, name FROM User WHERE LOWER(email) = ?`,
+      args: [normalizedEmail]
     });
 
     if (!result.rows.length) {
+      // Mensaje neutro para prevenir enumeración de cuentas
       return res.status(200).json({ message: 'Si el correo está registrado, recibirás un enlace de recuperación.' });
     }
 
@@ -443,10 +451,11 @@ export const forgotPassword = async (req, res) => {
       args: [resetToken, user.id]
     });
 
-    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${resetToken}`;
-    console.log(`🔑 [PASSWORD RESET] Enlace generado para [${email}]: ${resetUrl}`);
+    const delivery = await sendPasswordResetEmail(normalizedEmail, user.name, resetToken);
 
-    await sendPasswordResetEmail(email, user.name, resetToken);
+    if (delivery && !delivery.ok) {
+      console.warn(`⚠️ No se pudo entregar el correo de restablecimiento a [${normalizedEmail}]:`, delivery.error);
+    }
 
     res.status(200).json({ message: 'Si el correo está registrado, recibirás un enlace de recuperación.' });
   } catch (error) {

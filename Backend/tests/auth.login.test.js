@@ -28,6 +28,7 @@ const emailMock = {
   sendPasswordResetEmail: jest.fn(async () => ({ ok: true })),
   sendOTPEmail: jest.fn(async () => ({ ok: true })),
   sendAdminLockoutAlertEmail: jest.fn(async () => ({ ok: true })),
+  getFrontendUrl: jest.fn(() => 'http://localhost:5173'),
 };
 
 jest.unstable_mockModule('../src/services/email.service.js', () => emailMock);

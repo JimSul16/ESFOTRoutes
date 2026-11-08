@@ -67,6 +67,26 @@ services:
         sync: false
       - key: SMTP_PASS
         sync: false
+      # ── Correo Transaccional en Producción (HTTPS Puerto 443) ──────────────
+      # Render bloquea puertos SMTP (25, 465, 587). Se requiere proveedor HTTPS REST:
+      # Opción 0: Webhook HTTPS (Google Apps Script personal, sin SMS ni DNS)
+      - key: MAIL_WEBHOOK_URL
+        sync: false
+      # Opción A (Recomendada): Brevo (no requiere dominio DNS, 300 correos/día gratis)
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: Plataforma ESFOT
+      # Opción B: Resend (requiere dominio DNS verificado para enviar a @epn.edu.ec)
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        value: Plataforma ESFOT <onboarding@resend.dev>
+      # Opción C: SendGrid (Single Sender Verification)
+      - key: SENDGRID_API_KEY
+        sync: false
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
