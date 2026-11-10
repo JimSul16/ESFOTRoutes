@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,7 +18,9 @@ type ForgotValues = z.infer<typeof forgotSchema>;
 
 const Forgot = () => {
   const [loading, setLoading] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
+  const navigate = useNavigate();
 
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(forgotSchema)
@@ -40,10 +42,12 @@ const Forgot = () => {
   const sendEmail = async (dataForm: ForgotValues) => {
     setLoading(true);
     try {
-      // Antes este endpoint no daba ninguna señal al usuario: el éxito era
-      // silencioso y el error solo llegaba a la consola. Ahora ambos se avisan.
       const res = await forgotPassword({ email: dataForm.email });
+      setIsSubmitted(true);
       toast.success(res.message || "Si el correo está registrado, recibirás un enlace de recuperación.");
+      setTimeout(() => {
+        navigate("/login");
+      }, 2500);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, "No se pudo enviar el enlace de recuperación."));
     } finally {
@@ -93,26 +97,52 @@ const Forgot = () => {
           <p className="text-surface-500 dark:text-surface-400 text-xs sm:text-sm">Ingresa tu correo y te enviaremos instrucciones para restablecer tu contraseña.</p>
         </div>
 
-        <form onSubmit={handleSubmit(sendEmail)} className="space-y-5">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-surface-700 dark:text-surface-300 mb-2">Correo Electrónico</label>
-            <input
-              type="email"
-              placeholder="ejemplo@gmail.com"
-              className={`w-full px-4 py-3 rounded-xl bg-surface-50 dark:bg-surface-800/60 border ${errors.email ? 'border-rose-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all placeholder:text-surface-400 text-sm`}
-              {...register("email")}
-            />
-            {errors.email && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.email.message}</p>}
+        {isSubmitted ? (
+          <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-500 py-2">
+            <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-200 dark:border-emerald-500/20">
+              <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-display font-extrabold text-surface-900 dark:text-white mb-2">
+              ¡Enlace enviado!
+            </h3>
+            <p className="text-surface-500 dark:text-surface-400 text-xs sm:text-sm mb-6 leading-relaxed">
+              Si tu correo está registrado, recibirás un enlace para restablecer tu contraseña. Revisa también tu carpeta de spam.
+            </p>
+            <p className="text-xs text-brand-600 dark:text-brand-400 font-medium mb-6 animate-pulse">
+              Redirigiendo al inicio de sesión...
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/login")}
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-xs hover:shadow-brand-500/20 text-sm"
+            >
+              Ir al Inicio de Sesión ahora
+            </button>
           </div>
+        ) : (
+          <form onSubmit={handleSubmit(sendEmail)} className="space-y-5">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-surface-700 dark:text-surface-300 mb-2">Correo Electrónico</label>
+              <input
+                type="email"
+                placeholder="ejemplo@gmail.com"
+                className={`w-full px-4 py-3 rounded-xl bg-surface-50 dark:bg-surface-800/60 border ${errors.email ? 'border-rose-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all placeholder:text-surface-400 text-sm`}
+                {...register("email")}
+              />
+              {errors.email && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.email.message}</p>}
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-xs hover:shadow-brand-500/20 text-sm"
-          >
-            {loading ? "Enviando enlace..." : "Recuperar acceso"}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-xs hover:shadow-brand-500/20 text-sm"
+            >
+              {loading ? "Enviando enlace..." : "Recuperar acceso"}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

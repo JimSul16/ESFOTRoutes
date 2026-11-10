@@ -205,7 +205,12 @@ export const verifyAccount = async (req, res) => {
       args: [token]
     });
 
+    const isHtmlRequest = Boolean(req.headers.accept?.includes('text/html'));
+
     if (!result.rows.length) {
+      if (isHtmlRequest) {
+        return res.redirect(`${getFrontendUrl()}/login?error=invalid_token`);
+      }
       return res.status(400).json({ message: 'Token inválido' });
     }
 
@@ -213,6 +218,10 @@ export const verifyAccount = async (req, res) => {
       sql: `UPDATE User SET isVerified = 1, verificationToken = NULL WHERE id = ?`,
       args: [result.rows[0].id]
     });
+
+    if (isHtmlRequest) {
+      return res.redirect(`${getFrontendUrl()}/login?verified=true`);
+    }
 
     res.json({ message: 'Cuenta verificada con éxito' });
   } catch (error) {
@@ -685,7 +694,7 @@ export const unlockAccountViaToken = async (req, res) => {
           <h2 style="color: #0f172a; margin-bottom: 8px;">¡Cuenta Desbloqueada con Éxito!</h2>
           <p style="color: #475569; font-size: 14px; line-height: 1.5;">El usuario <strong>${safeUserName}</strong> (<code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${safeUserEmail}</code>) ha sido reactivado y ahora puede iniciar sesión con normalidad.</p>
           <div style="margin-top: 25px;">
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="background-color: #2563eb; color: white; padding: 10px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px; display: inline-block;">
+            <a href="${getFrontendUrl()}" style="background-color: #2563eb; color: white; padding: 10px 22px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px; display: inline-block;">
               Ir al Portal
             </a>
           </div>

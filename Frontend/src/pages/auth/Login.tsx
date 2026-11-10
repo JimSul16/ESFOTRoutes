@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -34,11 +34,24 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { loginAuth } = useAuth();
 
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(loginSchema)
   });
+
+  useEffect(() => {
+    if (searchParams.get('verified') === 'true') {
+      toast.success('¡Cuenta verificada correctamente! Ya puedes iniciar sesión.');
+      searchParams.delete('verified');
+      setSearchParams(searchParams, { replace: true });
+    } else if (searchParams.get('error') === 'invalid_token') {
+      toast.error('El enlace de verificación no es válido o ya fue utilizado.');
+      searchParams.delete('error');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (theme === 'dark') {

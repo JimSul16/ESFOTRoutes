@@ -26,6 +26,7 @@ const Reset = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
   const [loading, setLoading] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
 
   const { token } = useParams();
   const navigate = useNavigate();
@@ -60,6 +61,7 @@ const Reset = () => {
       // Antes no se mostraba confirmación ni error: el usuario solo veía que
       // tras 2.5 s lo echaban a /login, sin saber si el cambio se aplicó.
       const res = await resetPassword(token, { newPassword: dataForm.newPassword });
+      setIsSuccess(true);
       toast.success(res.message || "Contraseña actualizada. Redirigiendo al inicio de sesión...");
       setTimeout(() => {
         navigate("/login");
@@ -113,57 +115,83 @@ const Reset = () => {
           <p className="text-surface-500 dark:text-surface-400 text-xs sm:text-sm">Asegúrate de crear una contraseña robusta para proteger tu cuenta.</p>
         </div>
 
-        <form onSubmit={handleSubmit(updatePassword)} className="space-y-5">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-surface-700 dark:text-surface-300 mb-2">Nueva Contraseña</label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                placeholder="Mínimo 8 caracteres"
-                className={`w-full px-4 py-3 rounded-xl bg-surface-50 dark:bg-surface-800/60 border ${errors.newPassword ? 'border-rose-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all placeholder:text-surface-400 text-sm`}
-                {...register("newPassword")}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-3.5 flex items-center text-surface-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                aria-label="Ver u ocultar contraseña"
-              >
-                {showPassword ? <MdVisibilityOff size={20} /> : <MdVisibility size={20} />}
-              </button>
+        {isSuccess ? (
+          <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-500 py-4">
+            <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-200 dark:border-emerald-500/20">
+              <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
             </div>
-            {errors.newPassword && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.newPassword.message}</p>}
+            <h2 className="text-2xl font-display font-extrabold text-surface-900 dark:text-white tracking-tight mb-2">
+              ¡Contraseña Actualizada!
+            </h2>
+            <p className="text-surface-500 dark:text-surface-400 text-xs sm:text-sm mb-6 leading-relaxed">
+              Tu contraseña ha sido restablecida con éxito. Ya puedes iniciar sesión con tu nueva credencial.
+            </p>
+            <p className="text-xs text-brand-600 dark:text-brand-400 font-medium mb-6 animate-pulse">
+              Redirigiendo al inicio de sesión...
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-xs hover:shadow-brand-500/20 text-sm"
+            >
+              Ir al Inicio de Sesión ahora
+            </button>
           </div>
-
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-surface-700 dark:text-surface-300 mb-2">Confirmar Contraseña</label>
-            <div className="relative">
-              <input
-                type={showConfirmPassword ? "text" : "password"}
-                placeholder="Repite la contraseña"
-                className={`w-full px-4 py-3 rounded-xl bg-surface-50 dark:bg-surface-800/60 border ${errors.confirmPassword ? 'border-rose-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all placeholder:text-surface-400 text-sm`}
-                {...register("confirmPassword")}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute inset-y-0 right-3.5 flex items-center text-surface-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
-                aria-label="Ver u ocultar confirmación de contraseña"
-              >
-                {showConfirmPassword ? <MdVisibilityOff size={20} /> : <MdVisibility size={20} />}
-              </button>
+        ) : (
+          <form onSubmit={handleSubmit(updatePassword)} className="space-y-5">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-surface-700 dark:text-surface-300 mb-2">Nueva Contraseña</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Mínimo 8 caracteres"
+                  className={`w-full px-4 py-3 rounded-xl bg-surface-50 dark:bg-surface-800/60 border ${errors.newPassword ? 'border-rose-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all placeholder:text-surface-400 text-sm`}
+                  {...register("newPassword")}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-3.5 flex items-center text-surface-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                  aria-label="Ver u ocultar contraseña"
+                >
+                  {showPassword ? <MdVisibilityOff size={20} /> : <MdVisibility size={20} />}
+                </button>
+              </div>
+              {errors.newPassword && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.newPassword.message}</p>}
             </div>
-            {errors.confirmPassword && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.confirmPassword.message}</p>}
-          </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-xs hover:shadow-brand-500/20 text-sm mt-4"
-          >
-            {loading ? "Actualizando..." : "Actualizar Contraseña"}
-          </button>
-        </form>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-surface-700 dark:text-surface-300 mb-2">Confirmar Contraseña</label>
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="Repite la contraseña"
+                  className={`w-full px-4 py-3 rounded-xl bg-surface-50 dark:bg-surface-800/60 border ${errors.confirmPassword ? 'border-rose-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all placeholder:text-surface-400 text-sm`}
+                  {...register("confirmPassword")}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute inset-y-0 right-3.5 flex items-center text-surface-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                  aria-label="Ver u ocultar confirmación de contraseña"
+                >
+                  {showConfirmPassword ? <MdVisibilityOff size={20} /> : <MdVisibility size={20} />}
+                </button>
+              </div>
+              {errors.confirmPassword && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.confirmPassword.message}</p>}
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-xs hover:shadow-brand-500/20 text-sm mt-4"
+            >
+              {loading ? "Actualizando..." : "Actualizar Contraseña"}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

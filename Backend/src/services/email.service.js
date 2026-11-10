@@ -4,11 +4,43 @@ import "dotenv/config";
 /**
  * Normaliza y limpia la URL base del frontend para enlaces en correos.
  * Soporta listas separadas por coma (producción + previews) y elimina barras finales.
+ * En producción (Render) prioriza el dominio oficial https://tic-rutas-aprendizaje.vercel.app
+ * para evitar que los enlaces apunten a localhost si la variable de entorno no está configurada.
  */
 export const getFrontendUrl = () => {
-  const raw = process.env.FRONTEND_URL || 'http://localhost:5173';
-  const first = raw.split(',')[0].trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '');
-  return first || 'http://localhost:5173';
+  const raw = process.env.FRONTEND_URL;
+  if (raw) {
+    const first = raw.split(',')[0].trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '');
+    // Si en Render se configuró esfotroutes.vercel.app (dominio no existente en Vercel),
+    // corregirlo automáticamente al dominio real de la aplicación
+    if (first.includes('esfotroutes.vercel.app')) {
+      return 'https://tic-rutas-aprendizaje.vercel.app';
+    }
+    // Si es una URL real en la nube, usarla
+    if (first && !first.includes('localhost') && !first.includes('127.0.0.1')) {
+      return first;
+    }
+    // Si viene localhost explícito pero NO estamos en producción, permitirlo en local
+    const isExplicitDev =
+      process.env.NODE_ENV !== 'production' &&
+      process.env.RENDER !== 'true' &&
+      !process.env.RENDER_SERVICE_ID;
+    if (first && isExplicitDev) {
+      return first;
+    }
+  }
+
+  // Fallback para producción / Render
+  const isProd =
+    process.env.NODE_ENV === 'production' ||
+    process.env.RENDER === 'true' ||
+    Boolean(process.env.RENDER_SERVICE_ID);
+
+  if (isProd) {
+    return 'https://tic-rutas-aprendizaje.vercel.app';
+  }
+
+  return 'http://localhost:5173';
 };
 
 // ── Transporter Singleton con Nodemailer (100% Gratuito) ─────────────────────

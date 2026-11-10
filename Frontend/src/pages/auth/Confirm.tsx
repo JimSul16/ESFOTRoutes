@@ -47,6 +47,33 @@ const Confirm = () => {
     }
   };
 
+  useEffect(() => {
+    let active = true;
+    if (token && status === 'idle' && !loading) {
+      (async () => {
+        setLoading(true);
+        try {
+          const res = await verifyAccountRequest(token);
+          if (!active) return;
+          setStatus('success');
+          toast.success(res.message || 'Cuenta verificada correctamente');
+          setTimeout(() => {
+            if (active) navigate('/login');
+          }, 2500);
+        } catch (error: unknown) {
+          if (!active) return;
+          setStatus('error');
+          toast.error(getApiErrorMessage(error, 'Token inválido o expirado'));
+        } finally {
+          if (active) setLoading(false);
+        }
+      })();
+    }
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
   return (
     <div className="min-h-screen bg-surface-50 dark:bg-surface-900 flex items-center justify-center p-6 transition-colors duration-300 relative font-sans">
 
@@ -69,13 +96,21 @@ const Confirm = () => {
           {status === 'idle' && (
             <>
               <div className="w-20 h-20 bg-surface-100 dark:bg-surface-900/50 text-primary-600 dark:text-primary-400 rounded-full flex items-center justify-center mx-auto mb-6 border border-surface-200 dark:border-surface-700">
-                <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                <svg className={`w-10 h-10 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {loading ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                  )}
                 </svg>
               </div>
-              <h2 className="text-3xl font-display font-bold text-surface-900 dark:text-white mb-4">Verificación de Cuenta</h2>
-              <p className="text-surface-500 dark:text-surface-400 mb-8 leading-relaxed">
-                Estás a un paso de acceder a tu entorno de aprendizaje. Haz clic en el botón para confirmar tu correo institucional.
+              <h2 className="text-3xl font-display font-bold text-surface-900 dark:text-white mb-4">
+                {loading ? 'Verificando tu cuenta...' : 'Verificación de Cuenta'}
+              </h2>
+              <p className="text-surface-500 dark:text-surface-400 mb-8 leading-relaxed text-sm">
+                {loading
+                  ? 'Estamos validando tu correo institucional, por favor espera un momento...'
+                  : 'Estás a un paso de acceder a tu entorno de aprendizaje. Haz clic en el botón para confirmar tu correo institucional.'}
               </p>
               <button
                 onClick={verifyAccount}
@@ -99,6 +134,12 @@ const Confirm = () => {
               <p className="text-sm text-primary-600 dark:text-primary-400 font-medium mt-6 animate-pulse">
                 Redirigiendo al inicio de sesión...
               </p>
+              <Link
+                to="/login"
+                className="mt-6 w-full inline-block bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 rounded-lg transition-all shadow-sm"
+              >
+                Ir al Inicio de Sesión ahora
+              </Link>
             </div>
           )}
 

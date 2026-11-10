@@ -40,6 +40,20 @@ describe('email.service — Multi-proveedor y resiliencia en producción', () =>
       process.env.FRONTEND_URL = 'https://tic-rutas-aprendizaje.vercel.app, https://esfotroutes.vercel.app';
       expect(emailService.getFrontendUrl()).toBe('https://tic-rutas-aprendizaje.vercel.app');
     });
+
+    it('corrige automáticamente esfotroutes.vercel.app a tic-rutas-aprendizaje.vercel.app', () => {
+      process.env.FRONTEND_URL = 'https://esfotroutes.vercel.app';
+      expect(emailService.getFrontendUrl()).toBe('https://tic-rutas-aprendizaje.vercel.app');
+    });
+
+    it('en entorno Render o producción usa el dominio oficial de Vercel si FRONTEND_URL es localhost o vacía', () => {
+      process.env.RENDER = 'true';
+      delete process.env.FRONTEND_URL;
+      expect(emailService.getFrontendUrl()).toBe('https://tic-rutas-aprendizaje.vercel.app');
+
+      process.env.FRONTEND_URL = 'http://localhost:5173';
+      expect(emailService.getFrontendUrl()).toBe('https://tic-rutas-aprendizaje.vercel.app');
+    });
   });
 
   describe('sendEmail con Webhook HTTPS (Google Apps Script)', () => {

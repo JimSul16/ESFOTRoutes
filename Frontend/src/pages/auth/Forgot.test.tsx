@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import { forgotPassword } from '../../api/auth.api';
@@ -40,9 +40,13 @@ describe('Forgot — feedback al usuario', () => {
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   // Regresión: antes el éxito era totalmente silencioso y el error solo iba a
   // `console.error`. El usuario no tenía ninguna señal de qué había pasado.
-  it('confirma el envío con el mensaje del backend', async () => {
+  it('confirma el envío con el mensaje del backend y muestra estado de éxito', async () => {
     mockForgot.mockResolvedValueOnce({
       message: 'Si el correo está registrado, recibirás un enlace de recuperación.',
     });
@@ -56,6 +60,31 @@ describe('Forgot — feedback al usuario', () => {
         screen.getByText('Si el correo está registrado, recibirás un enlace de recuperación.')
       ).toBeTruthy();
     });
+    expect(screen.getByText('¡Enlace enviado!')).toBeTruthy();
+    expect(screen.getByText('Ir al Inicio de Sesión ahora')).toBeTruthy();
+  });
+
+  it('redirige a /login tras 2.5 segundos de confirmación', async () => {
+    vi.useFakeTimers();
+    mockForgot.mockResolvedValueOnce({
+      message: 'Si el correo está registrado, recibirás un enlace de recuperación.',
+    });
+
+    renderForgot();
+    fill('email', 'ana@epn.edu.ec');
+
+    await act(async () => {
+      submit();
+    });
+
+    expect(mockForgot).toHaveBeenCalled();
+    expect(screen.queryByText('pantalla de login')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(2500);
+    });
+
+    expect(screen.getByText('pantalla de login')).toBeTruthy();
   });
 
   it('envía solo el email al backend', async () => {
