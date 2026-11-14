@@ -27,6 +27,7 @@ Respaldos Grafo/
 # Material local de pruebas: evidencia de tesis y configuración del agente.
 # No forma parte del código de la plataforma.
 Pruebas/
+Pruebas_Render/
 
 # Página de pruebas de autenticación manual. Contiene credenciales de prueba
 # en claro: no debe versionarse (ya se retiró del índice de git).

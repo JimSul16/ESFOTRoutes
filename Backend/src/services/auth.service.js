@@ -4,16 +4,18 @@ import { turso } from '../config/turso.js';
 
 /**
  * Registra un nuevo usuario con rol STUDENT.
+ * Acepta además carrera, semestre e identificador único (RR-003 / RR-005),
+ * que son opcionales para no romper el registro actual del frontend.
  * Retorna el objeto del usuario creado.
  */
-export const registerUser = async ({ name, email, password }) => {
+export const registerUser = async ({ name, email, password, career = null, semester = null, uniqueId = null }) => {
   const hashedPassword    = await bcrypt.hash(password, 10);
   const verificationToken = crypto.randomBytes(32).toString('hex');
 
   await turso.execute({
-    sql: `INSERT INTO User (name, email, password, verificationToken, isVerified)
-          VALUES (?, ?, ?, ?, 0)`,
-    args: [name, email, hashedPassword, verificationToken]
+    sql: `INSERT INTO User (name, email, password, career, semester, uniqueId, verificationToken, isVerified)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+    args: [name, email, hashedPassword, career, semester, uniqueId, verificationToken]
   });
 
   const userResult = await turso.execute({

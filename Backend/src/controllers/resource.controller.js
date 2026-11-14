@@ -49,6 +49,62 @@ export const getResources = async (req, res) => {
   }
 };
 
+/**
+ * Catálogo de recursos para el estudiante (RR-006).
+ * GET /api/resources/catalog?search=&type=
+ *
+ * El listado general (`GET /`) estaba pensado para el panel de admin: aquí se
+ * añade una vista de catálogo con filtro de búsqueda (título/descripción) y
+ * filtro por tipo, que es lo que consume la biblioteca del frontend.
+ */
+export const getCatalog = async (req, res) => {
+  try {
+    const { search, type } = req.query;
+
+    const ALLOWED_TYPES = ['LINK', 'PDF', 'VIDEO', 'IMAGE', 'DOCUMENT'];
+
+    const conditions = [];
+    const args = [];
+
+    if (search !== undefined && search !== '') {
+      if (typeof search !== 'string' || search.length > 100) {
+        return res.status(400).json({ error: 'El término de búsqueda no es válido (máx. 100 caracteres).' });
+      }
+      conditions.push(`(r.title LIKE ? OR IFNULL(r.description, '') LIKE ?)`);
+      const like = `%${search.trim()}%`;
+      args.push(like, like);
+    }
+
+    if (type !== undefined && type !== '') {
+      if (!ALLOWED_TYPES.includes(type)) {
+        return res.status(400).json({
+          error: `Tipo no válido. Valores admitidos: ${ALLOWED_TYPES.join(', ')}.`
+        });
+      }
+      conditions.push(`r.type = ?`);
+      args.push(type);
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const result = await turso.execute({
+      sql: `SELECT r.id, r.title, r.description, r.type, r.url, r.createdAt,
+                   u.name AS authorName
+            FROM Resource r
+            JOIN User u ON u.id = r.authorId
+            ${whereClause}
+            ORDER BY r.createdAt DESC
+            LIMIT 100`,
+      args
+    });
+
+    return res.status(200).json({ resources: result.rows, total: result.rows.length });
+  } catch (error) {
+    console.error('Error en getCatalog:', error);
+    return res.status(500).json({ error: 'Error al obtener el catálogo de recursos.' });
+  }
+};
+
 export const updateResource = async (req, res) => {
   try {
     const { id } = req.params;

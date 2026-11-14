@@ -1,10 +1,242 @@
 import { getDriver } from './neo4j.service.js';
 import { turso } from '../config/turso.js';
+// RR-013: las semillas curriculares se reutilizan como catálogo local de
+// respaldo cuando Neo4j no está configurado o el grafo viene vacío, para no
+// devolver una lista de materias vacía en silencio.
+import { redesSubject } from '../seeds/seedRedes.js';
+import { webSubject } from '../seeds/seedAplicacionesWeb.js';
 import "dotenv/config";
 
 const getSession = (driver) => {
   const database = process.env.NEO4J_DATABASE || 'neo4j';
   return driver.session({ database });
+};
+
+// ── Catálogo curricular local (respaldo de Neo4j) ─────────────────────────────
+
+/** Materias que conoce el proyecto (mismo dato que siembra `seedKnowledgeGraph.js`). */
+const FALLBACK_SUBJECTS = [redesSubject, webSubject];
+
+/** Índice id → nombre de TODOS los temas, para resolver prerrequisitos cruzados. */
+const buildTopicNameIndex = () => {
+  const index = new Map();
+  for (const subject of FALLBACK_SUBJECTS) {
+    for (const mod of subject.modules) {
+      for (const topic of mod.topics) {
+        index.set(topic.id, topic.name);
+      }
+    }
+  }
+  return index;
+};
+
+const FALLBACK_TOPIC_NAMES = buildTopicNameIndex();
+
+/**
+ * Listado de materias con conteos, calculado desde las semillas locales.
+ * Tiene la misma forma que la consulta a Neo4j.
+ */
+const getFallbackSubjectsWithCounts = () =>
+  FALLBACK_SUBJECTS.map((subject) => ({
+    id: subject.id,
+    name: subject.name,
+    code: subject.code,
+    description: subject.description,
+    credits: subject.credits,
+    moduleCount: subject.modules.length,
+    topicCount: subject.modules.reduce((total, mod) => total + mod.topics.length, 0)
+  }));
+
+/**
+ * Temario de una materia desde las semillas locales, con la misma forma que
+ * `getSubjectTopicsWithPrereqs` (prerrequisitos como `{id, name, strength}`).
+ *
+ * @param {string} subjectId
+ * @returns {Array} módulos con sus temas, o `[]` si la materia no existe.
+ */
+const getFallbackSubjectTopics = (subjectId) => {
+  const subject = FALLBACK_SUBJECTS.find((s) => s.id === subjectId);
+  if (!subject) return [];
+
+  return subject.modules
+    .slice()
+    .sort((a, b) => a.position - b.position)
+    .map((mod) => ({
+      id: mod.id,
+      name: mod.name,
+      position: mod.position,
+      topics: mod.topics.map((topic) => ({
+        id: topic.id,
+        name: topic.name,
+        description: topic.description,
+        difficulty: topic.difficulty,
+        estimatedMinutes: topic.estimatedMinutes,
+        prerequisites: (topic.prerequisites || [])
+          .filter((p) => p && p.targetId)
+          .map((p) => ({
+            id: p.targetId,
+            name: FALLBACK_TOPIC_NAMES.get(p.targetId) || p.targetId,
+            strength: p.strength || 'HARD'
+          })),
+        resources: topic.resources || []
+      }))
+    }));
+};
+
+/**
+ * Texto del subgrafo curricular completo desde el catálogo local (RR-015).
+ * Formato: materias → módulos → temas con sus prerrequisitos.
+ */
+const buildLocalCurriculumText = () => {
+  const lines = [];
+  for (const subject of FALLBACK_SUBJECTS) {
+    lines.push(`- Materia: ${subject.name} (${subject.code})`);
+    for (const mod of subject.modules.slice().sort((a, b) => a.position - b.position)) {
+      lines.push(`  - Módulo: ${mod.name}`);
+      for (const topic of mod.topics) {
+        const prereqs = (topic.prerequisites || [])
+          .map((p) => FALLBACK_TOPIC_NAMES.get(p.targetId) || p.targetId)
+          .join(', ');
+        lines.push(
+          `    - Tema (${topic.difficulty}): ${topic.name}` +
+          (prereqs ? ` [Prerrequisitos: ${prereqs}]` : '')
+        );
+      }
+    }
+  }
+  return lines.join('\n');
+};
+
+/**
+ * Subgrafo curricular COMPLETO en texto, para el prompt del asistente (RR-015).
+ *
+ * Antes el chat solo inyectaba contexto si resolvía un tema concreto; si no,
+ * caía a un resumen global de 5 materias (o a nada si Neo4j faltaba) y el
+ * modelo respondía "sin tener el grafo". Ahora se fuerza la inyección del
+ * subgrafo entero (materias → módulos → temas con prerrequisitos) en todo
+ * mensaje sin tema resoluble, con respaldo al catálogo local.
+ *
+ * @returns {Promise<{available: boolean, text: string, source: 'neo4j'|'local'|null, reason: string|null}>}
+ */
+export const getFullCurriculumContext = async () => {
+  const MAX_CHARS = 15000;
+
+  const truncate = (text) =>
+    text.length > MAX_CHARS
+      ? `${text.slice(0, MAX_CHARS)}\n[Contexto truncado por longitud]`
+      : text;
+
+  const driver = getDriver();
+
+  if (!driver) {
+    const local = buildLocalCurriculumText();
+    if (local) {
+      console.warn('⚠️ RR-015: Neo4j no configurado; contexto curricular tomado del catálogo local.');
+      return {
+        available: true,
+        text: truncate(local),
+        source: 'local',
+        reason: 'Neo4j no está configurado en el servidor; se usó el catálogo curricular local.'
+      };
+    }
+    return {
+      available: false,
+      text: '',
+      source: null,
+      reason: 'Neo4j no está configurado (faltan NEO4J_URI / NEO4J_PASSWORD) y no hay catálogo local disponible.'
+    };
+  }
+
+  try {
+    const session = getSession(driver);
+    try {
+      const result = await session.run(`
+        MATCH (s:Subject)-[:HAS_MODULE]->(m:Module)-[:CONTAINS_TOPIC]->(t:Topic)
+        OPTIONAL MATCH (t)-[p:PREREQUISITE]->(prereq:Topic)
+        RETURN s.id AS subjectId,
+               s.name AS subjectName,
+               s.code AS subjectCode,
+               m.name AS moduleName,
+               m.position AS modulePosition,
+               t.name AS topicName,
+               t.difficulty AS difficulty,
+               collect(DISTINCT prereq.name) AS prereqNames
+        ORDER BY m.position ASC, t.id ASC
+      `);
+
+      if (result.records.length === 0) {
+        const local = buildLocalCurriculumText();
+        if (local) {
+          console.warn('⚠️ RR-015: el grafo está vacío; contexto curricular tomado del catálogo local.');
+          return {
+            available: true,
+            text: truncate(local),
+            source: 'local',
+            reason: 'El grafo de conocimiento está vacío (semillas no ejecutadas); se usó el catálogo local.'
+          };
+        }
+        return {
+          available: false,
+          text: '',
+          source: null,
+          reason: 'El grafo de conocimiento está vacío (las semillas curriculares no se ejecutaron).'
+        };
+      }
+
+      const lines = [];
+      let currentSubject = null;
+      let currentModule = null;
+
+      for (const record of result.records) {
+        const subjectId = record.get('subjectId');
+        const moduleName = record.get('moduleName');
+
+        if (subjectId !== currentSubject) {
+          currentSubject = subjectId;
+          currentModule = null;
+          const code = record.get('subjectCode');
+          lines.push(`- Materia: ${record.get('subjectName')}${code ? ` (${code})` : ''}`);
+        }
+
+        if (moduleName !== currentModule) {
+          currentModule = moduleName;
+          lines.push(`  - Módulo: ${moduleName}`);
+        }
+
+        const prereqs = (record.get('prereqNames') || []).filter(Boolean).join(', ');
+        lines.push(
+          `    - Tema (${record.get('difficulty')}): ${record.get('topicName')}` +
+          (prereqs ? ` [Prerrequisitos: ${prereqs}]` : '')
+        );
+      }
+
+      return {
+        available: true,
+        text: truncate(lines.join('\n')),
+        source: 'neo4j',
+        reason: null
+      };
+    } finally {
+      await session.close();
+    }
+  } catch (error) {
+    console.error('❌ RR-015: error consultando el grafo curricular:', error.message);
+    const local = buildLocalCurriculumText();
+    if (local) {
+      return {
+        available: true,
+        text: truncate(local),
+        source: 'local',
+        reason: `Neo4j no respondió (${error.message}); se usó el catálogo curricular local.`
+      };
+    }
+    return {
+      available: false,
+      text: '',
+      source: null,
+      reason: `Neo4j no respondió (${error.message}).`
+    };
+  }
 };
 
 /**
@@ -62,10 +294,23 @@ export const initGraphConstraints = async () => {
 
 /**
  * Listar materias disponibles en el catálogo curricular con conteo de módulos y temas
+ *
+ * RR-013: antes devolvía `[]` en silencio cuando Neo4j no estaba configurado
+ * (o el grafo venía vacío) y el frontend se quedaba en "Cargando catálogo..."
+ * para siempre. Ahora se registra el error y se responde con el catálogo
+ * curricular local (las mismas materias que siembra `seedKnowledgeGraph.js`),
+ * de modo que el listado siempre incluye Redes de Computadoras y Desarrollo
+ * de Aplicaciones Web.
  */
 export const getSubjectsWithCounts = async () => {
   const driver = getDriver();
-  if (!driver) return [];
+  if (!driver) {
+    console.error(
+      '❌ RR-013: Neo4j no está configurado (NEO4J_URI / NEO4J_PASSWORD vacíos). ' +
+      'Usando el catálogo curricular local como respaldo.'
+    );
+    return getFallbackSubjectsWithCounts();
+  }
 
   const session = getSession(driver);
   try {
@@ -83,7 +328,7 @@ export const getSubjectsWithCounts = async () => {
       ORDER BY s.name ASC
     `);
 
-    return result.records.map(record => ({
+    const subjects = result.records.map(record => ({
       id: record.get('id'),
       name: record.get('name'),
       code: record.get('code'),
@@ -92,9 +337,21 @@ export const getSubjectsWithCounts = async () => {
       moduleCount: record.get('moduleCount').toNumber ? record.get('moduleCount').toNumber() : Number(record.get('moduleCount')),
       topicCount: record.get('topicCount').toNumber ? record.get('topicCount').toNumber() : Number(record.get('topicCount'))
     }));
+
+    // Grafo accesible pero sin materias sembradas: no devolver [] en silencio.
+    if (subjects.length === 0) {
+      console.error(
+        '⚠️ RR-013: Neo4j respondió 0 materias (grafo vacío o semillas no ejecutadas). ' +
+        'Usando el catálogo curricular local como respaldo. Ejecuta: node src/seeds/seedKnowledgeGraph.js'
+      );
+      return getFallbackSubjectsWithCounts();
+    }
+
+    return subjects;
   } catch (error) {
     console.error('❌ Error obteniendo materias de Neo4j:', error.message);
-    throw error;
+    console.error('⚠️ RR-013: se responde con el catálogo curricular local como respaldo.');
+    return getFallbackSubjectsWithCounts();
   } finally {
     await session.close();
   }
@@ -102,10 +359,18 @@ export const getSubjectsWithCounts = async () => {
 
 /**
  * Obtener módulos y temas con sus prerrequisitos para autodiagnóstico
+ *
+ * RR-013: igual que `getSubjectsWithCounts`, si Neo4j no está disponible se
+ * responde desde el catálogo local en vez de devolver `[]` en silencio.
  */
 export const getSubjectTopicsWithPrereqs = async (subjectId) => {
   const driver = getDriver();
-  if (!driver) return [];
+  if (!driver) {
+    console.error(
+      `❌ RR-013: Neo4j no está configurado; temario de "${subjectId}" resuelto desde el catálogo local.`
+    );
+    return getFallbackSubjectTopics(subjectId);
+  }
 
   const session = getSession(driver);
   try {
@@ -168,9 +433,26 @@ export const getSubjectTopicsWithPrereqs = async (subjectId) => {
       });
     });
 
+    if (modulesMap.size === 0) {
+      // Materia sin nodos en el grafo (semillas no ejecutadas): respaldo local.
+      const fallback = getFallbackSubjectTopics(subjectId);
+      if (fallback.length > 0) {
+        console.error(
+          `⚠️ RR-013: Neo4j no tiene el temario de "${subjectId}". Usando el catálogo local.`
+        );
+        return fallback;
+      }
+      return [];
+    }
+
     return Array.from(modulesMap.values()).sort((a, b) => a.position - b.position);
   } catch (error) {
     console.error('❌ Error obteniendo temas de materia en Neo4j:', error.message);
+    const fallback = getFallbackSubjectTopics(subjectId);
+    if (fallback.length > 0) {
+      console.error(`⚠️ RR-013: se responde con el catálogo local para "${subjectId}".`);
+      return fallback;
+    }
     throw error;
   } finally {
     await session.close();

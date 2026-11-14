@@ -146,12 +146,66 @@ const handleFailedAttempt = async (user, req, res, reasonMessage) => {
 
 // ─── Controladores ────────────────────────────────────────────────────────────
 
+/**
+ * Valida los campos académicos opcionales del registro (RR-003).
+ *
+ * `career` y `semester` son opcionales por ahora para no romper el formulario
+ * actual del frontend; cuando vienen, se validan. `uniqueId` (RR-005) sigue
+ * el mismo criterio: 9 dígitos si se envía.
+ *
+ * @returns {string|null} Mensaje de error, o `null` si todo está bien.
+ */
+export const validateAcademicFields = ({ career, semester, uniqueId } = {}) => {
+  if (career !== undefined && career !== null && career !== '') {
+    if (typeof career !== 'string' || career.trim().length < 3) {
+      return 'La carrera debe tener al menos 3 caracteres.';
+    }
+  }
+
+  if (semester !== undefined && semester !== null && semester !== '') {
+    const n = Number(semester);
+    if (!Number.isInteger(n) || n < 1 || n > 10) {
+      return 'El semestre debe ser un número entero entre 1 y 10.';
+    }
+  }
+
+  if (uniqueId !== undefined && uniqueId !== null && uniqueId !== '') {
+    if (typeof uniqueId !== 'string' && typeof uniqueId !== 'number') {
+      return 'El identificador único debe ser un valor de 9 dígitos.';
+    }
+    const digits = String(uniqueId).trim();
+    if (!/^\d{9}$/.test(digits)) {
+      return 'El identificador único debe tener exactamente 9 dígitos.';
+    }
+  }
+
+  return null;
+};
+
 export const register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, career, semester, uniqueId } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Todos los campos son obligatorios' });
+    }
+
+    // RR-003 / RR-005: carrera, semestre e identificador institucional.
+    const academicError = validateAcademicFields({ career, semester, uniqueId });
+    if (academicError) {
+      return res.status(400).json({ error: academicError });
+    }
+
+    // Un `uniqueId` ya asignado debe rechazarse con 409 antes de intentar el
+    // INSERT (el UNIQUE de la columna daría un 500 genérico).
+    if (uniqueId !== undefined && uniqueId !== null && uniqueId !== '') {
+      const existing = await turso.execute({
+        sql: `SELECT id FROM User WHERE uniqueId = ?`,
+        args: [String(uniqueId).trim()]
+      });
+      if (existing.rows.length) {
+        return res.status(409).json({ error: 'Este identificador único ya está registrado.' });
+      }
     }
 
     // Un `email` que no sea string reventaba con un TypeError (500), y el
@@ -173,7 +227,14 @@ export const register = async (req, res) => {
       return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
     }
 
-    const user = await registerUser({ name, email: normalizedEmail, password });
+    const user = await registerUser({
+      name,
+      email: normalizedEmail,
+      password,
+      career: career !== undefined && career !== null && career !== '' ? String(career).trim() : null,
+      semester: semester !== undefined && semester !== null && semester !== '' ? Number(semester) : null,
+      uniqueId: uniqueId !== undefined && uniqueId !== null && uniqueId !== '' ? String(uniqueId).trim() : null,
+    });
 
     const delivery = await sendVerificationEmail(user.email, user.verificationToken);
     if (delivery && !delivery.ok) {
@@ -190,6 +251,11 @@ export const register = async (req, res) => {
   } catch (error) {
     console.error('Error en register:', error);
     if (error.message?.includes('UNIQUE constraint failed')) {
+      // El UNIQUE puede ser el email o el uniqueId (RR-005): responder 409
+      // para identificadores duplicados y 400 (mensaje actual) para emails.
+      if (error.message.includes('uniqueId')) {
+        return res.status(409).json({ error: 'Este identificador único ya está registrado.' });
+      }
       return res.status(400).json({ error: 'Este correo ya se encuentra registrado.' });
     }
     return res.status(500).json({ error: 'Error interno del servidor.' });
@@ -425,7 +491,7 @@ export const getProfile = async (req, res) => {
   try {
     const result = await turso.execute({
       sql: `SELECT id, name, email, createdAt, streak, level, xp, initials,
-                   learningProfile, profilePicture
+                   learningProfile, profilePicture, career, semester, uniqueId
             FROM User WHERE id = ?`,
       args: [req.user.id]
     });
@@ -441,6 +507,95 @@ export const getProfile = async (req, res) => {
   } catch (error) {
     console.error('Error en getProfile:', error);
     res.status(500).json({ error: 'Error al obtener el perfil' });
+  }
+};
+
+/**
+ * Resumen de avances del estudiante (RR-004).
+ * GET /api/auth/my-progress
+ *
+ * Devuelve el progreso global (puntos/nivel) junto al detalle de rutas
+ * inscritas y módulos aprobados, para que el frontend pinte el resumen de
+ * avances sin llamadas extra. Los campos con "XP" mantienen su nombre
+ * histórico y se añaden alias `points*` para el renombre a "progreso".
+ */
+export const getMyProgress = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const userResult = await turso.execute({
+      sql: `SELECT xp, level, streak, career, semester FROM User WHERE id = ?`,
+      args: [userId]
+    });
+
+    if (!userResult.rows.length) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    const user = userResult.rows[0];
+
+    const modulesResult = await turso.execute({
+      sql: `SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN isPassed = 1 THEN 1 ELSE 0 END) AS passed
+            FROM ModuleProgress WHERE userId = ?`,
+      args: [userId]
+    });
+    const modules = modulesResult.rows[0] || {};
+
+    const routesResult = await turso.execute({
+      sql: `SELECT lr.id, lr.title, lr.category, lr.imageUrl, lr.estimatedTime,
+                   e.progress, e.createdAt AS enrolledAt
+            FROM Enrollment e
+            JOIN LearningRoute lr ON lr.id = e.learningRouteId
+            WHERE e.userId = ?
+            ORDER BY e.createdAt DESC`,
+      args: [userId]
+    });
+
+    const routes = routesResult.rows;
+    const totalProgress = routes.length
+      ? Math.round(routes.reduce((sum, r) => sum + (r.progress || 0), 0) / routes.length)
+      : 0;
+
+    // Últimas actividades (RR-004): módulos aprobados recientes + accesos.
+    const activitiesResult = await turso.execute({
+      sql: `SELECT 'MODULE' AS kind,
+                   ('Módulo aprobado: ' || IFNULL(m.title, 'Módulo')) AS label,
+                   mp.score AS score,
+                   mp.completedAt AS at
+            FROM ModuleProgress mp
+            JOIN Module m ON m.id = mp.moduleId
+            WHERE mp.userId = ? AND mp.isPassed = 1
+            UNION ALL
+            SELECT 'SESSION' AS kind,
+                   ('Inicio de sesión (' || IFNULL(ul.status, 'SUCCESS') || ')') AS label,
+                   NULL AS score,
+                   ul.createdAt AS at
+            FROM UserSessionLog ul
+            WHERE ul.userId = ? AND ul.status = 'SUCCESS'
+            ORDER BY at DESC
+            LIMIT 10`,
+      args: [userId, userId]
+    });
+
+    res.json({
+      // Alias en español para el renombre XP → "progreso" (RR-004).
+      points: user.xp,
+      level: user.level,
+      streak: user.streak,
+      xp: user.xp,              // nombre histórico (compatibilidad)
+      progressLevel: user.level,
+      career: user.career,
+      semester: user.semester,
+      modulesCompleted: Number(modules.total || 0),
+      modulesPassed: Number(modules.passed || 0),
+      routesEnrolled: routes.length,
+      averageProgress: totalProgress,
+      routes,
+      recentActivities: activitiesResult.rows
+    });
+  } catch (error) {
+    console.error('Error en getMyProgress:', error);
+    res.status(500).json({ error: 'Error al obtener el resumen de progreso.' });
   }
 };
 
@@ -480,7 +635,7 @@ const computeInitials = (name) => {
 /**
  * Actualiza los datos editables del perfil del usuario autenticado.
  * PUT /api/auth/profile
- * Body: { name?, profilePicture?, learningProfile? }
+ * Body: { name?, profilePicture?, learningProfile?, career?, semester? }
  *
  * Por diseño NO se permite modificar email, roles, xp, level ni streak:
  * son campos gestionados por el servidor (verificación, gamificación, roles).
@@ -488,11 +643,17 @@ const computeInitials = (name) => {
 export const updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { name, profilePicture, learningProfile } = req.body;
+    const { name, profilePicture, learningProfile, career, semester } = req.body;
 
     // ── Validaciones ───────────────────────────────────────────────────────────
     if (name !== undefined && (typeof name !== 'string' || name.trim().length < 3)) {
       return res.status(400).json({ error: 'El nombre debe tener al menos 3 caracteres.' });
+    }
+
+    // RR-003: carrera y semestre también se editan desde el perfil.
+    const academicError = validateAcademicFields({ career, semester });
+    if (academicError) {
+      return res.status(400).json({ error: academicError });
     }
 
     const updates = [];
@@ -504,6 +665,16 @@ export const updateProfile = async (req, res) => {
       // Mantener las iniciales sincronizadas con el nombre.
       updates.push('initials = ?');
       args.push(computeInitials(name.trim()));
+    }
+
+    if (career !== undefined) {
+      updates.push('career = ?');
+      args.push(career === null || career === '' ? null : String(career).trim());
+    }
+
+    if (semester !== undefined) {
+      updates.push('semester = ?');
+      args.push(semester === null || semester === '' ? null : Number(semester));
     }
 
     if (profilePicture !== undefined) {
@@ -536,7 +707,7 @@ export const updateProfile = async (req, res) => {
 
     const result = await turso.execute({
       sql: `SELECT id, name, email, createdAt, streak, level, xp, initials,
-                   learningProfile, profilePicture
+                   learningProfile, profilePicture, career, semester, uniqueId
             FROM User WHERE id = ?`,
       args: [userId]
     });

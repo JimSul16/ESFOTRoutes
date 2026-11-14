@@ -33,6 +33,11 @@ export const runMigrations = async () => {
       { name: 'lockoutCount',   type: 'INTEGER NOT NULL DEFAULT 0' },
       { name: 'isLocked',       type: 'INTEGER NOT NULL DEFAULT 0' },
       { name: 'unlockToken',    type: 'TEXT' },
+      // RR-003: carrera y nivel (semestre) del estudiante.
+      { name: 'career',         type: 'TEXT' },
+      { name: 'semester',       type: 'INTEGER' },
+      // RR-005: identificador institucional de 9 dígitos (cédula/pasaporte).
+      { name: 'uniqueId',       type: 'TEXT' },
     ];
 
     const tableInfo = await turso.execute('PRAGMA table_info(User)');

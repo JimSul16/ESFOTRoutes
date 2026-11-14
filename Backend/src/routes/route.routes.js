@@ -8,7 +8,8 @@ import {
   generatePersonalizedRoute,
   getMyRoutes,
   enrollRoute,
-  completeModule
+  completeModule,
+  getModuleAssessments
 } from '../controllers/routes.controller.js';
 import { verifyToken, checkRoles } from '../middlewares/auth.middleware.js';
 import { handleUploadError, uploadMaterial } from '../middlewares/upload.middleware.js';
@@ -19,6 +20,10 @@ router.get('/my-routes', verifyToken, getMyRoutes);
 router.get('/:id', verifyToken, checkRoles(['ADMIN', 'STUDENT']), getRouteById);
 router.post('/:id/enroll', verifyToken, checkRoles(['STUDENT']), enrollRoute);
 router.post('/complete-module', verifyToken, checkRoles(['STUDENT']), completeModule);
+
+// RR-008: evaluaciones generadas de un módulo (listado).
+// `/:id` solo captura un segmento, así que esta ruta de 3 segmentos no choca.
+router.get('/modules/:moduleId/assessments', verifyToken, checkRoles(['ADMIN', 'STUDENT']), getModuleAssessments);
 
 router.post('/', verifyToken, checkRoles(['ADMIN']), createRoute);
 router.get('/', verifyToken, checkRoles(['ADMIN', 'STUDENT']), getRoutes);

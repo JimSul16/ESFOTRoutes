@@ -16,6 +16,8 @@ router.post('/unlock-account/:token', authCtrl.unlockAccountViaToken);
 
 router.get('/profile', verifyToken, authCtrl.getProfile);
 router.put('/profile', verifyToken, authCtrl.updateProfile);
+// RR-004: resumen de avances del estudiante (puntos, nivel, rutas, módulos).
+router.get('/my-progress', verifyToken, checkRoles(['STUDENT', 'ADMIN']), authCtrl.getMyProgress);
 router.put('/change-password', verifyToken, authCtrl.changePassword);
 router.get('/sessions', verifyToken, authCtrl.getSessionHistory);
 

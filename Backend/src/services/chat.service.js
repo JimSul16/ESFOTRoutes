@@ -1,8 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { turso } from '../config/turso.js';
 import { prepareResourceForGemini } from './resourceParser.service.js';
-import { getDriver } from './neo4j.service.js';
-import { getTopicContextForChat, markTopicStruggle, getModuleTopicsForChat } from './knowledgeGraph.service.js';
+import {
+  getTopicContextForChat,
+  markTopicStruggle,
+  getModuleTopicsForChat,
+  getFullCurriculumContext
+} from './knowledgeGraph.service.js';
 import 'dotenv/config';
 
 export const PRIMARY_MODEL = process.env.GEMINI_PRIMARY_MODEL || 'gemini-3.5-flash';
@@ -79,6 +83,63 @@ export const updateStudentProfile = async (userId, studentMessage, aiMessage, cu
   } catch (err) {
     // Error silencioso para no bloquear el flujo de respuesta
     console.warn('⚠️ No se pudo actualizar el perfil de aprendizaje:', err.message);
+  }
+};
+
+/**
+ * Información real del estudiante para el prompt del tutor (RR-015):
+ * nivel, puntos de progreso, materias en curso con su avance y módulos
+ * aprobados, consultada en Turso.
+ *
+ * @param {number|string} userId
+ * @returns {Promise<string>} bloque de texto (puede estar vacío si no hay datos).
+ */
+const getStudentContextForPrompt = async (userId) => {
+  try {
+    const userResult = await turso.execute({
+      sql: `SELECT name, level, xp, career, semester FROM User WHERE id = ?`,
+      args: [userId]
+    });
+    if (!userResult.rows.length) return '';
+    const u = userResult.rows[0];
+
+    const enrollResult = await turso.execute({
+      sql: `SELECT lr.title AS title, lr.subjectId AS subjectId, e.progress AS progress
+            FROM Enrollment e
+            JOIN LearningRoute lr ON lr.id = e.learningRouteId
+            WHERE e.userId = ?
+            ORDER BY e.createdAt DESC
+            LIMIT 5`,
+      args: [userId]
+    });
+
+    const modulesResult = await turso.execute({
+      sql: `SELECT COUNT(*) AS total,
+                   SUM(CASE WHEN isPassed = 1 THEN 1 ELSE 0 END) AS passed
+            FROM ModuleProgress WHERE userId = ?`,
+      args: [userId]
+    });
+    const modules = modulesResult.rows[0] || {};
+
+    const lines = [
+      `- Nombre: ${u.name}${u.career ? ` | Carrera: ${u.career}` : ''}${u.semester ? ` | Semestre: ${u.semester}` : ''}`,
+      `- Nivel de progreso: ${u.level} | Puntos de progreso: ${u.xp}`,
+      `- Módulos aprobados: ${Number(modules.passed || 0)} de ${Number(modules.total || 0)} intentados`
+    ];
+
+    if (enrollResult.rows.length) {
+      lines.push('- Rutas/materias en curso:');
+      for (const r of enrollResult.rows) {
+        lines.push(`  * ${r.title}${r.subjectId ? ` (${r.subjectId})` : ''} — avance ${r.progress || 0}%`);
+      }
+    } else {
+      lines.push('- Todavía no está inscrito en ninguna ruta.');
+    }
+
+    return lines.join('\n');
+  } catch (error) {
+    console.warn('⚠️ RR-015: no se pudo cargar la información del estudiante para el prompt:', error.message);
+    return '';
   }
 };
 
@@ -184,24 +245,34 @@ export const generateChatResponse = async ({ userId, moduleId, topicId, routeId,
 - Temas que este concepto desbloquea en la carrera: ${unlocksList}
 `;
   } else {
-    // Si no hay tema resoluble, extraer resumen del grafo global
-    try {
-      const driver = getDriver();
-      if (driver) {
-        const neo4jSession = driver.session({ database: process.env.NEO4J_DATABASE || 'neo4j' });
-        const graphRes = await neo4jSession.run(`
-          MATCH (s:Subject)-[:HAS_MODULE]->(m:Module)
-          RETURN s.name AS subject, collect(m.name) AS modules
-          LIMIT 5
-        `);
-        const routesInfo = graphRes.records.map(rec => `- Materia: ${rec.get('subject')}. Módulos: ${rec.get('modules').join(', ')}`).join('\n');
-        if (routesInfo) {
-          graphContext = `\nContexto Curricular Global (Neo4j AuraDB):\n${routesInfo}\n`;
-        }
-        await neo4jSession.close();
+    // RR-015: FORZAR el subgrafo curricular completo cuando no hay tema
+    // resoluble. Antes solo se inyectaba un resumen global de 5 materias (y
+    // nada si Neo4j faltaba), así que el modelo respondía "sin tener el
+    // contexto del grafo". Ahora siempre hay contexto, o un aviso explícito.
+    const curriculum = await getFullCurriculumContext();
+
+    if (curriculum.available) {
+      graphContext = `
+[CONTEXTO CURRICULAR COMPLETO DEL GRAFO DE CONOCIMIENTO (GraphRAG)]
+Usa esta estructura (materias → módulos → temas con prerrequisitos) como fuente de verdad curricular:
+${curriculum.text}
+`;
+      if (curriculum.reason) {
+        console.warn(`⚠️ RR-015: contexto curricular servido con respaldo: ${curriculum.reason}`);
       }
-    } catch (_) {}
+    } else {
+      graphContext = `
+[CONTEXTO DEL GRAFO DE CONOCIMIENTO NO DISPONIBLE]
+Motivo: ${curriculum.reason}
+Indica al estudiante que el contexto curricular del grafo no está disponible en este momento y responde con el material del módulo si lo hay.
+`;
+      console.error(`❌ RR-015: sin contexto curricular: ${curriculum.reason}`);
+    }
   }
+
+  // RR-015: información REAL del estudiante (materias en curso, avance y
+  // puntos) para que el tutor responda con contexto, no en abstracto.
+  const studentContext = await getStudentContextForPrompt(userId);
 
   // 5. Configurar Prompt de Sistema
   const systemPrompt = `
@@ -211,6 +282,9 @@ export const generateChatResponse = async ({ userId, moduleId, topicId, routeId,
     ${moduleContext}
     ${graphContext}
 
+    Información real del estudiante (úsala para personalizar tus respuestas):
+    ${studentContext || 'Sin datos de progreso disponibles.'}
+
     Perfil de aprendizaje dinámico del estudiante:
     ${user?.learningProfile || 'Estudiante politécnico, fomenta el razonamiento crítico y la práctica.'}
 
@@ -219,6 +293,8 @@ export const generateChatResponse = async ({ userId, moduleId, topicId, routeId,
     2. Evita definiciones memorísticas; plantea escenarios prácticos de ingeniería, lógica de programación y redes.
     3. Exige análisis de arquitecturas, protocolos o bloques de código según corresponda.
     4. Mantén un tono académico, motivador y directo.
+    5. Usa SIEMPRE la estructura del grafo curricular inyectada (materias, módulos, temas y prerrequisitos) como fuente de verdad; relaciona tus respuestas con los temas y prerrequisitos listados ahí y con el avance real del estudiante.
+    6. Si el mensaje indica "CONTEXTO DEL GRAFO DE CONOCIMIENTO NO DISPONIBLE", avísale al estudiante de forma breve que el contexto curricular no está disponible y continúa con el material del módulo si existe.
   `;
 
   // 6. Cargar Historial

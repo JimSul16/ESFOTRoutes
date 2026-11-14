@@ -550,7 +550,7 @@ export const enrollRoute = async (req, res) => {
     });
 
     if (existing.rows.length) {
-      return res.status(400).json({ message: 'Ya estás inscrito en esta ruta.' });
+      return res.status(400).json({ message: 'Ya estás inscrito en esta ruta.', enrolled: true });
     }
 
     await turso.execute({
@@ -568,7 +568,7 @@ export const enrollRoute = async (req, res) => {
       args: [userId, routeId]
     });
 
-    return res.status(201).json({ message: 'Inscripción exitosa.', enrollment: result.rows[0] });
+    return res.status(201).json({ message: 'Inscripción exitosa.', enrollment: result.rows[0], enrolled: true });
   } catch (error) {
     console.error('Error en enrollRoute:', error);
     return res.status(500).json({ error: 'Error al inscribirse en la ruta.' });
@@ -624,10 +624,13 @@ export const completeModule = async (req, res) => {
     });
 
     if (existingProgress.rows.length) {
+      const alreadyProgress = await getRouteProgress(userId, routeId);
       return res.status(200).json({
         message: 'Módulo ya completado anteriormente.',
         passed: true,
-        progress: await getRouteProgress(userId, routeId),
+        progress: alreadyProgress,
+        // Alias en español: el frontend renombra "XP" → "progreso" (RR-004).
+        newTotalProgress: alreadyProgress,
       });
     }
 
@@ -636,7 +639,8 @@ export const completeModule = async (req, res) => {
       return res.status(200).json({
         message: 'Progreso registrado. Sigue practicando para aprobar el módulo. Se reforzarán estos conceptos.',
         passed: false,
-        score: score || 0
+        score: score || 0,
+        progress: await getRouteProgress(userId, routeId),
       });
     }
 
@@ -669,10 +673,71 @@ export const completeModule = async (req, res) => {
 
     return res.status(200).json({
       message: 'Módulo completado con éxito.',
-      progress, xpGained: 50, newTotalXp: newXp, newLevel
+      progress,
+      xpGained: 50,
+      newTotalXp: newXp,
+      newLevel,
+      // ── Alias "progreso" (RR-004) ──────────────────────────────────────
+      // Mismos valores con el vocabulario nuevo del frontend:
+      // "XP" → puntos de progreso, "level" → nivel de progreso.
+      pointsGained: 50,
+      newTotalProgress: newXp,
+      newProgressLevel: newLevel
     });
   } catch (error) {
     console.error('Error en completeModule:', error);
     return res.status(500).json({ error: 'Error al registrar el progreso.' });
+  }
+};
+
+/**
+ * Evaluaciones generadas de un módulo (RR-008).
+ * GET /api/routes/modules/:moduleId/assessments
+ *
+ * La tabla `ModuleAssessment` ya guardaba los exámenes generados, pero no
+ * había ninguna forma de listarlos: solo se podían volver a pedir con
+ * `POST /api/chat/assessment`. Devuelve el listado (con `content` parseado)
+ * para que el frontend pueda mostrar el historial de evaluaciones del módulo.
+ */
+export const getModuleAssessments = async (req, res) => {
+  try {
+    const modId = parseId(req.params.moduleId);
+    if (modId === null) {
+      return res.status(400).json({ error: 'El identificador del módulo no es válido.' });
+    }
+
+    const moduleData = await turso.execute({
+      sql: `SELECT id, title, routeId FROM Module WHERE id = ?`,
+      args: [modId]
+    });
+    if (!moduleData.rows.length) {
+      return res.status(404).json({ error: 'Módulo no encontrado.' });
+    }
+
+    const result = await turso.execute({
+      sql: `SELECT id, moduleId, type, content, createdAt, updatedAt
+            FROM ModuleAssessment WHERE moduleId = ?
+            ORDER BY updatedAt DESC`,
+      args: [modId]
+    });
+
+    const assessments = result.rows.map((row) => {
+      let content = row.content;
+      try {
+        content = JSON.parse(row.content);
+      } catch (_) {
+        // `content` no es JSON válido: se devuelve tal cual (texto plano).
+      }
+      return { ...row, content };
+    });
+
+    return res.json({
+      module: { id: moduleData.rows[0].id, title: moduleData.rows[0].title, routeId: moduleData.rows[0].routeId },
+      assessments,
+      total: assessments.length
+    });
+  } catch (error) {
+    console.error('Error en getModuleAssessments:', error);
+    return res.status(500).json({ error: 'Error al obtener las evaluaciones del módulo.' });
   }
 };

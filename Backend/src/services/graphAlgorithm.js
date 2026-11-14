@@ -5,6 +5,54 @@ import { syncRouteToGraph } from './neo4j.service.js';
 import { generateCurricularFallbackAssessment } from './chat.service.js';
 
 /**
+ * Avance REAL del estudiante en una materia, desde Turso (RR-014).
+ *
+ * Antes la ruta personalizada solo usaba el autodiagnóstico (SELF_REPORTED)
+ * y los `COMPLETED` del grafo: el progreso registrado en `ModuleProgress`
+ * (módulos aprobados en sus rutas) no se consultaba, así que se recomendaran
+ * temas ya cubiertos por el alumno.
+ *
+ * Calcula módulos aprobados sobre el total de módulos de las rutas inscritas
+ * de la materia.
+ *
+ * @param {number|string} userId
+ * @param {string} subjectId
+ * @returns {Promise<{approvedModules: number, totalModules: number, progress: number}>}
+ *          `progress` es un porcentaje entero 0-100.
+ */
+export const getUserSubjectProgress = async (userId, subjectId) => {
+  try {
+    const result = await turso.execute({
+      sql: `SELECT
+              (SELECT COUNT(*)
+                 FROM Module m
+                 JOIN LearningRoute lr ON lr.id = m.routeId
+                 JOIN Enrollment e ON e.learningRouteId = lr.id
+                WHERE e.userId = ? AND lr.subjectId = ?) AS totalModules,
+              (SELECT COUNT(*)
+                 FROM ModuleProgress mp
+                 JOIN Module m ON m.id = mp.moduleId
+                 JOIN LearningRoute lr ON lr.id = m.routeId
+                WHERE mp.userId = ? AND lr.subjectId = ? AND mp.isPassed = 1) AS approvedModules`,
+      args: [userId, subjectId, userId, subjectId]
+    });
+
+    const row = result.rows[0] || {};
+    const totalModules   = Number(row.totalModules || 0);
+    const approvedModules = Number(row.approvedModules || 0);
+
+    return {
+      approvedModules,
+      totalModules,
+      progress: totalModules > 0 ? Math.round((approvedModules / totalModules) * 100) : 0
+    };
+  } catch (error) {
+    console.error('❌ Error calculando el avance por materia (RR-014):', error.message);
+    return { approvedModules: 0, totalModules: 0, progress: 0 };
+  }
+};
+
+/**
  * Desarma ciclos en el grafo eliminando preferentemente aristas de tipo SOFT o de menor impacto
  */
 export const breakCycles = (g, edgeMetadata) => {
@@ -57,9 +105,12 @@ export const breakCycles = (g, edgeMetadata) => {
 /**
  * Calcula el orden topológico adaptativo y estructuración de módulos
  * @param {Array} topicsData Temas con prerrequisitos, autodiagnóstico y dificultades
+ * @param {Object} [options]
+ * @param {{approvedModules:number,totalModules:number,progress:number}|null} [options.subjectProgress]
+ *        Avance real del estudiante en la materia (RR-014), consultado en Turso.
  * @returns {Object} { orderedTopics, structuredModules, totalEstimatedMinutes, summary }
  */
-export const computeAdaptiveRoute = (topicsData = []) => {
+export const computeAdaptiveRoute = (topicsData = [], { subjectProgress = null } = {}) => {
   if (!topicsData || topicsData.length === 0) {
     return {
       orderedTopics: [],
@@ -102,6 +153,8 @@ export const computeAdaptiveRoute = (topicsData = []) => {
   // Base = (6 - selfLevel) * 10
   // Impacto = outDegree * 15 (temas que desbloquean más contenido)
   // Refuerzo = struggles ? 20 : 0
+  // Avance real (RR-014): un tema ya aprobado en `ModuleProgress` baja de
+  // prioridad para no recomendar contenido que el estudiante ya cubrió.
   const priorityScores = new Map();
 
   for (const topic of topicsData) {
@@ -110,8 +163,9 @@ export const computeAdaptiveRoute = (topicsData = []) => {
     const outEdges = g.outEdges(topic.topicId) || [];
     const impact = outEdges.length * 15;
     const strugglesBonus = topic.struggles ? 20 : 0;
+    const completedPenalty = topic.isCompleted === true ? 25 : 0;
 
-    const totalPriority = base + impact + strugglesBonus;
+    const totalPriority = base + impact + strugglesBonus - completedPenalty;
     priorityScores.set(topic.topicId, totalPriority);
   }
 
@@ -153,8 +207,11 @@ export const computeAdaptiveRoute = (topicsData = []) => {
   const orderedTopics = orderedTopicIds.map((id, index) => {
     const t = topicsMap.get(id);
     const selfLevel = t.selfLevel ? Math.max(1, Math.min(5, t.selfLevel)) : 3;
-    const isReinforcement = selfLevel <= 2 || t.struggles === true;
-    const isMastered = selfLevel >= 4;
+    // RR-014: un tema aprobado en el avance real (`ModuleProgress`) cuenta
+    // como dominado aunque el autodiagnóstico haya quedado desactualizado,
+    // y ya no se marca como refuerzo.
+    const isMastered = selfLevel >= 4 || t.isCompleted === true;
+    const isReinforcement = !isMastered && (selfLevel <= 2 || t.struggles === true);
 
     // Ajuste adaptativo del tiempo estimado según el nivel reportado
     let baseMins = t.estimatedMinutes || 30;
@@ -305,6 +362,9 @@ export const computeAdaptiveRoute = (topicsData = []) => {
     modules: structuredModules,
     profile: profileType,
     totalEstimatedMinutes,
+    // RR-014: avance real consultado en Turso, para que la UI pueda decir
+    // "basado en tu autodiagnóstico y tu avance actual".
+    subjectProgress,
     summary: {
       profileType,
       avgSelfLevel: Number(avgSelfLevel.toFixed(2)),
@@ -312,7 +372,10 @@ export const computeAdaptiveRoute = (topicsData = []) => {
       reinforcementCount,
       standardCount,
       totalTopics: orderedTopics.length,
-      totalEstimatedMinutes
+      totalEstimatedMinutes,
+      subjectProgress: subjectProgress ? subjectProgress.progress : null,
+      approvedModules: subjectProgress ? subjectProgress.approvedModules : null,
+      totalModulesTracked: subjectProgress ? subjectProgress.totalModules : null
     }
   };
 };
@@ -327,8 +390,13 @@ export const generateAndPersistAdaptiveRoute = async ({ userId, subjectId, autho
     throw new Error(`No se encontraron temas curriculares para la materia '${subjectId}'.`);
   }
 
+  // RR-014: además del autodiagnóstico, se consulta el avance REAL del
+  // estudiante en la materia (módulos aprobados en `ModuleProgress`) para no
+  // recomendar como pendiente lo que ya cubrió.
+  const subjectProgress = await getUserSubjectProgress(userId, subjectId);
+
   // 2. Calcular la ruta adaptativa
-  const adaptivePlan = computeAdaptiveRoute(topicsData);
+  const adaptivePlan = computeAdaptiveRoute(topicsData, { subjectProgress });
   const subjectName = subjectId === 'redes' ? 'Redes de Computadoras' : (subjectId === 'web' ? 'Desarrollo de Aplicaciones Web' : subjectId.toUpperCase());
 
   let routeTitle = `Ruta Adaptativa: ${subjectName}`;
@@ -345,7 +413,10 @@ export const generateAndPersistAdaptiveRoute = async ({ userId, subjectId, autho
     routeDifficulty = 'ADAPTIVE';
   }
 
-  const routeDescription = `Ruta calculada según tu autodiagnóstico (Promedio: ${adaptivePlan.summary.avgSelfLevel}/5). Incluye ${adaptivePlan.structuredModules.length} módulos con ${adaptivePlan.summary.masteredCount} temas convalidados y ${adaptivePlan.summary.reinforcementCount} temas de refuerzo pedagógico.`;
+  const progressNote = subjectProgress.totalModules > 0
+    ? ` Tu avance actual en la materia es del ${subjectProgress.progress}% (${subjectProgress.approvedModules}/${subjectProgress.totalModules} módulos aprobados), que también se usó para calcular esta ruta.`
+    : '';
+  const routeDescription = `Ruta calculada según tu autodiagnóstico (Promedio: ${adaptivePlan.summary.avgSelfLevel}/5). Incluye ${adaptivePlan.structuredModules.length} módulos con ${adaptivePlan.summary.masteredCount} temas convalidados y ${adaptivePlan.summary.reinforcementCount} temas de refuerzo pedagógico.${progressNote}`;
 
   // 3. Persistir en Turso
   let createdRouteId = null;
@@ -368,6 +439,10 @@ export const generateAndPersistAdaptiveRoute = async ({ userId, subjectId, autho
           masteredCount: adaptivePlan.summary.masteredCount,
           reinforcementCount: adaptivePlan.summary.reinforcementCount,
           totalTopics: adaptivePlan.orderedTopics.length,
+          // RR-014: avance real usado además del autodiagnóstico.
+          subjectProgress: subjectProgress.progress,
+          approvedModules: subjectProgress.approvedModules,
+          totalModulesTracked: subjectProgress.totalModules,
           generatedVia: 'KnowledgeGraphDAG'
         }),
         authorId || userId
@@ -472,7 +547,9 @@ export const generateAndPersistAdaptiveRoute = async ({ userId, subjectId, autho
       difficulty: routeDifficulty,
       modules: adaptivePlan.structuredModules,
       summary: adaptivePlan.summary,
-      totalEstimatedMinutes: adaptivePlan.totalEstimatedMinutes
+      totalEstimatedMinutes: adaptivePlan.totalEstimatedMinutes,
+      // RR-014: el frontend muestra en qué se basó la ruta sugerida.
+      subjectProgress
     };
   } catch (error) {
     console.error('❌ Error durante la persistencia dual de la ruta adaptativa:', error);
