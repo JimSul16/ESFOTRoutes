@@ -147,34 +147,44 @@ const handleFailedAttempt = async (user, req, res, reasonMessage) => {
 // ─── Controladores ────────────────────────────────────────────────────────────
 
 /**
- * Valida los campos académicos opcionales del registro (RR-003).
+ * Valida los campos académicos del registro, el perfil y el CRUD de admin
+ * (RR-003 / RR-005).
  *
- * `career` y `semester` son opcionales por ahora para no romper el formulario
- * actual del frontend; cuando vienen, se validan. `uniqueId` (RR-005) sigue
- * el mismo criterio: 9 dígitos si se envía.
+ * Con `{ required: true }` (registro, alta/edición desde admin y edición de
+ * perfil) los campos que falten se rechazan con 400. Con `{ required: false }`
+ * solo se validan cuando vienen, para admitir actualizaciones parciales.
+ * Cuando vienen, el formato se valida en ambos modos.
  *
  * @returns {string|null} Mensaje de error, o `null` si todo está bien.
  */
-export const validateAcademicFields = ({ career, semester, uniqueId } = {}) => {
-  if (career !== undefined && career !== null && career !== '') {
-    if (typeof career !== 'string' || career.trim().length < 3) {
-      return 'La carrera debe tener al menos 3 caracteres.';
-    }
+export const validateAcademicFields = (
+  { career, semester, uniqueId } = {},
+  { required = false } = {}
+) => {
+  const isMissing = (value) => value === undefined || value === null || value === '';
+
+  if (isMissing(career)) {
+    if (required) return 'La carrera es obligatoria.';
+  } else if (typeof career !== 'string' || career.trim().length < 3) {
+    return 'La carrera debe tener al menos 3 caracteres.';
   }
 
-  if (semester !== undefined && semester !== null && semester !== '') {
+  if (isMissing(semester)) {
+    if (required) return 'El semestre es obligatorio.';
+  } else {
     const n = Number(semester);
     if (!Number.isInteger(n) || n < 1 || n > 10) {
       return 'El semestre debe ser un número entero entre 1 y 10.';
     }
   }
 
-  if (uniqueId !== undefined && uniqueId !== null && uniqueId !== '') {
+  if (isMissing(uniqueId)) {
+    if (required) return 'El identificador único es obligatorio.';
+  } else {
     if (typeof uniqueId !== 'string' && typeof uniqueId !== 'number') {
       return 'El identificador único debe ser un valor de 9 dígitos.';
     }
-    const digits = String(uniqueId).trim();
-    if (!/^\d{9}$/.test(digits)) {
+    if (!/^\d{9}$/.test(String(uniqueId).trim())) {
       return 'El identificador único debe tener exactamente 9 dígitos.';
     }
   }
@@ -190,26 +200,16 @@ export const register = async (req, res) => {
       return res.status(400).json({ error: 'Todos los campos son obligatorios' });
     }
 
-    // RR-003 / RR-005: carrera, semestre e identificador institucional.
-    const academicError = validateAcademicFields({ career, semester, uniqueId });
+    // RR-003 / RR-005: carrera, semestre e identificador institucional son
+    // OBLIGATORIOS: registrarse solo con nombre/correo/contraseña responde 400.
+    const academicError = validateAcademicFields({ career, semester, uniqueId }, { required: true });
     if (academicError) {
       return res.status(400).json({ error: academicError });
     }
 
-    // Un `uniqueId` ya asignado debe rechazarse con 409 antes de intentar el
-    // INSERT (el UNIQUE de la columna daría un 500 genérico).
-    if (uniqueId !== undefined && uniqueId !== null && uniqueId !== '') {
-      const existing = await turso.execute({
-        sql: `SELECT id FROM User WHERE uniqueId = ?`,
-        args: [String(uniqueId).trim()]
-      });
-      if (existing.rows.length) {
-        return res.status(409).json({ error: 'Este identificador único ya está registrado.' });
-      }
-    }
-
     // Un `email` que no sea string reventaba con un TypeError (500), y el
     // dominio se comparaba sin normalizar: `User@EPN.EDU.EC` se rechazaba.
+    // Todas las validaciones de formato van ANTES de tocar la BD.
     if (!isValidEmail(email)) {
       return res.status(400).json({ error: 'El correo electrónico no tiene un formato válido.' });
     }
@@ -227,13 +227,24 @@ export const register = async (req, res) => {
       return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
     }
 
+    // Un `uniqueId` ya asignado debe rechazarse con 409 antes de intentar el
+    // INSERT (el UNIQUE de la columna daría un 500 genérico).
+    const normalizedUniqueId = String(uniqueId).trim();
+    const existing = await turso.execute({
+      sql: `SELECT id FROM User WHERE uniqueId = ?`,
+      args: [normalizedUniqueId]
+    });
+    if (existing.rows.length) {
+      return res.status(409).json({ error: 'Este identificador único ya está registrado.' });
+    }
+
     const user = await registerUser({
       name,
       email: normalizedEmail,
       password,
-      career: career !== undefined && career !== null && career !== '' ? String(career).trim() : null,
-      semester: semester !== undefined && semester !== null && semester !== '' ? Number(semester) : null,
-      uniqueId: uniqueId !== undefined && uniqueId !== null && uniqueId !== '' ? String(uniqueId).trim() : null,
+      career: String(career).trim(),
+      semester: Number(semester),
+      uniqueId: normalizedUniqueId,
     });
 
     const delivery = await sendVerificationEmail(user.email, user.verificationToken);
@@ -635,7 +646,10 @@ const computeInitials = (name) => {
 /**
  * Actualiza los datos editables del perfil del usuario autenticado.
  * PUT /api/auth/profile
- * Body: { name?, profilePicture?, learningProfile?, career?, semester? }
+ * Body: { name?, profilePicture?, learningProfile?, career, semester }
+ *
+ * RR-003: `career` y `semester` son OBLIGATORIOS en todo guardado de perfil
+ * (no se pueden omitir ni borrar); los demás campos siguen siendo opcionales.
  *
  * Por diseño NO se permite modificar email, roles, xp, level ni streak:
  * son campos gestionados por el servidor (verificación, gamificación, roles).
@@ -650,8 +664,8 @@ export const updateProfile = async (req, res) => {
       return res.status(400).json({ error: 'El nombre debe tener al menos 3 caracteres.' });
     }
 
-    // RR-003: carrera y semestre también se editan desde el perfil.
-    const academicError = validateAcademicFields({ career, semester });
+    // RR-003: carrera y semestre obligatorios en el perfil.
+    const academicError = validateAcademicFields({ career, semester }, { required: true });
     if (academicError) {
       return res.status(400).json({ error: academicError });
     }
@@ -667,15 +681,11 @@ export const updateProfile = async (req, res) => {
       args.push(computeInitials(name.trim()));
     }
 
-    if (career !== undefined) {
-      updates.push('career = ?');
-      args.push(career === null || career === '' ? null : String(career).trim());
-    }
+    updates.push('career = ?');
+    args.push(String(career).trim());
 
-    if (semester !== undefined) {
-      updates.push('semester = ?');
-      args.push(semester === null || semester === '' ? null : Number(semester));
-    }
+    updates.push('semester = ?');
+    args.push(Number(semester));
 
     if (profilePicture !== undefined) {
       if (profilePicture !== null && typeof profilePicture !== 'string') {

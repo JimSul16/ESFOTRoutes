@@ -77,25 +77,20 @@ export const createUser = async (req, res) => {
       return res.status(400).json({ error: 'Todos los campos son obligatorios' });
     }
 
-    // RR-005: el identificador único (9 dígitos) es opcional, pero si viene
-    // debe ser válido y estar libre.
-    const academicError = validateAcademicFields({ career, semester, uniqueId });
+    // RR-003 / RR-005: carrera, semestre e ID único son obligatorios también
+    // cuando el admin crea un usuario.
+    const academicError = validateAcademicFields({ career, semester, uniqueId }, { required: true });
     if (academicError) {
       return res.status(400).json({ error: academicError });
     }
 
-    const normalizedUniqueId = uniqueId !== undefined && uniqueId !== null && uniqueId !== ''
-      ? String(uniqueId).trim()
-      : null;
-
-    if (normalizedUniqueId) {
-      const existing = await turso.execute({
-        sql: `SELECT id FROM User WHERE uniqueId = ?`,
-        args: [normalizedUniqueId]
-      });
-      if (existing.rows.length) {
-        return res.status(409).json({ error: 'Este identificador único ya está registrado.' });
-      }
+    const normalizedUniqueId = String(uniqueId).trim();
+    const existing = await turso.execute({
+      sql: `SELECT id FROM User WHERE uniqueId = ?`,
+      args: [normalizedUniqueId]
+    });
+    if (existing.rows.length) {
+      return res.status(409).json({ error: 'Este identificador único ya está registrado.' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -107,8 +102,8 @@ export const createUser = async (req, res) => {
         name,
         email,
         hashedPassword,
-        career !== undefined && career !== null && career !== '' ? String(career).trim() : null,
-        semester !== undefined && semester !== null && semester !== '' ? Number(semester) : null,
+        String(career).trim(),
+        Number(semester),
         normalizedUniqueId
       ]
     });
@@ -141,48 +136,31 @@ export const updateUser = async (req, res) => {
     const { id } = req.params;
     const { name, email, password, roleName, career, semester, uniqueId } = req.body;
 
+    // RR-003 / RR-005: carrera, semestre e identificador único son
+    // obligatorios también al editar un usuario desde el panel de admin.
+    const academicError = validateAcademicFields({ career, semester, uniqueId }, { required: true });
+    if (academicError) {
+      return res.status(400).json({ error: academicError });
+    }
+
     // RR-005: se acepta tanto el id numérico como el ID único EPN (9 dígitos).
     const userId = await resolveUserIdParam(id);
     if (userId === null) {
       return res.status(400).json({ error: 'El identificador de usuario no es válido.' });
     }
 
-    // RR-003 / RR-005: carrera, semestre e identificador único editables.
-    const academicError = validateAcademicFields({ career, semester, uniqueId });
-    if (academicError) {
-      return res.status(400).json({ error: academicError });
+    const normalizedUniqueId = String(uniqueId).trim();
+    // Rechazar 409 si el identificador pertenece a OTRO usuario.
+    const existingUniqueId = await turso.execute({
+      sql: `SELECT id FROM User WHERE uniqueId = ? AND id != ?`,
+      args: [normalizedUniqueId, userId]
+    });
+    if (existingUniqueId.rows.length) {
+      return res.status(409).json({ error: 'Este identificador único ya está registrado.' });
     }
 
-    let updateSql = `UPDATE User SET name = ?, email = ?, updatedAt = datetime('now')`;
-    let updateArgs = [name, email];
-
-    if (career !== undefined) {
-      updateSql += `, career = ?`;
-      updateArgs.push(career === null || career === '' ? null : String(career).trim());
-    }
-
-    if (semester !== undefined) {
-      updateSql += `, semester = ?`;
-      updateArgs.push(semester === null || semester === '' ? null : Number(semester));
-    }
-
-    if (uniqueId !== undefined) {
-      const normalizedUniqueId = uniqueId === null || uniqueId === '' ? null : String(uniqueId).trim();
-
-      if (normalizedUniqueId) {
-        // Rechazar 409 si el identificador pertenece a OTRO usuario.
-        const existing = await turso.execute({
-          sql: `SELECT id FROM User WHERE uniqueId = ? AND id != ?`,
-          args: [normalizedUniqueId, userId]
-        });
-        if (existing.rows.length) {
-          return res.status(409).json({ error: 'Este identificador único ya está registrado.' });
-        }
-      }
-
-      updateSql += `, uniqueId = ?`;
-      updateArgs.push(normalizedUniqueId);
-    }
+    let updateSql = `UPDATE User SET name = ?, email = ?, career = ?, semester = ?, uniqueId = ?, updatedAt = datetime('now')`;
+    let updateArgs = [name, email, String(career).trim(), Number(semester), normalizedUniqueId];
 
     if (password) {
       const hashedPassword = await bcrypt.hash(password, 10);

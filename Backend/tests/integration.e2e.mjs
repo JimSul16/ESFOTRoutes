@@ -54,7 +54,25 @@ let topicIds = [];
 try {
   // ── 1 · Registro ────────────────────────────────────────────────────────
   seccion('1 · REGISTRO');
-  const reg = await call('POST', '/api/auth/register', { body: { name: 'Estudiante Integración', email, password } });
+
+  // RR-003/RR-005: sin carrera/semestre/ID único el registro debe fallar.
+  const regInvalida = await call('POST', '/api/auth/register', {
+    body: { name: 'Estudiante Sin Campos', email: `sin.campos.${Date.now()}@epn.edu.ec`, password },
+  });
+  if (regInvalida.status === 400) ok('registro sin carrera/semestre/ID único → 400');
+  else mal(`registro incompleto: ${regInvalida.status}`, JSON.stringify(regInvalida.data));
+
+  const uniqueId = String(Date.now()).slice(-9);
+  const reg = await call('POST', '/api/auth/register', {
+    body: {
+      name: 'Estudiante Integración',
+      email,
+      password,
+      career: 'Sistemas de Información',
+      semester: 5,
+      uniqueId,
+    },
+  });
   if (reg.status === 201) ok(`registro 201 — ${reg.data.message}`);
   else mal(`registro: ${reg.status}`, JSON.stringify(reg.data));
 

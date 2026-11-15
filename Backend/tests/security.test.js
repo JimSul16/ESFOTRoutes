@@ -18,7 +18,12 @@ jest.unstable_mockModule('../src/services/neo4j.service.js', () => ({
 const { escapeHtml, isValidEmail, parseId } = await import('../src/utils/index.js');
 const { renderUnlockAccountForm } = await import('../src/controllers/auth.controller.js');
 const { executeCode } = await import('../src/controllers/execute.controller.js');
-const { register } = await import('../src/controllers/auth.controller.js');
+const { register, updateProfile } = await import('../src/controllers/auth.controller.js');
+const { createUser } = await import('../src/controllers/admin.controller.js');
+
+// Campos académicos válidos (RR-003 / RR-005): obligatorios en registro,
+// perfil y alta de usuarios desde el panel de admin.
+const academicOk = { career: 'Sistemas de Información', semester: 5, uniqueId: '123456789' };
 
 const mockRes = () => {
   const res = { status: 200, payload: null, body: '' };
@@ -92,7 +97,7 @@ describe('register — validaciones de entrada', () => {
   test('un email con formato inválido devuelve 400 (no 500)', async () => {
     const res = mockRes();
     await register(
-      { body: { name: 'Ana', email: 'correo-malo', password: 'contrasena1' } },
+      { body: { name: 'Ana', email: 'correo-malo', password: 'contrasena1', ...academicOk } },
       res
     );
 
@@ -102,11 +107,122 @@ describe('register — validaciones de entrada', () => {
   test('una contraseña no-string devuelve 400 (no 500 en bcrypt)', async () => {
     const res = mockRes();
     await register(
-      { body: { name: 'Ana', email: 'ana@epn.edu.ec', password: 12345678 } },
+      { body: { name: 'Ana', email: 'ana@epn.edu.ec', password: 12345678, ...academicOk } },
       res
     );
 
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('register — carrera, semestre e ID único son obligatorios (RR-003/RR-005)', () => {
+  test('registrarse solo con nombre, correo y contraseña responde 400', async () => {
+    const res = mockRes();
+    await register(
+      { body: { name: 'Ana', email: 'ana@epn.edu.ec', password: 'contrasena1' } },
+      res
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(res.payload.error).toContain('carrera');
+  });
+
+  test('sin semestre responde 400', async () => {
+    const res = mockRes();
+    await register(
+      {
+        body: {
+          name: 'Ana',
+          email: 'ana@epn.edu.ec',
+          password: 'contrasena1',
+          career: academicOk.career,
+          uniqueId: academicOk.uniqueId,
+        },
+      },
+      res
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(res.payload.error).toContain('semestre');
+  });
+
+  test('sin ID único responde 400', async () => {
+    const res = mockRes();
+    await register(
+      {
+        body: {
+          name: 'Ana',
+          email: 'ana@epn.edu.ec',
+          password: 'contrasena1',
+          career: academicOk.career,
+          semester: academicOk.semester,
+        },
+      },
+      res
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(res.payload.error).toContain('identificador único');
+  });
+});
+
+describe('updateProfile — carrera y semestre obligatorios en el perfil (RR-003)', () => {
+  test('guardar solo el nombre responde 400 (el frontend debe enviar carrera/semestre)', async () => {
+    const res = mockRes();
+    await updateProfile({ user: { id: 1 }, body: { name: 'Nombre Nuevo' } }, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.payload.error).toContain('carrera');
+  });
+
+  test('no se puede borrar la carrera enviándola en null → 400', async () => {
+    const res = mockRes();
+    await updateProfile({ user: { id: 1 }, body: { career: null, semester: 5 } }, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.payload.error).toContain('carrera');
+  });
+});
+
+describe('admin createUser — campos académicos obligatorios', () => {
+  test('crear usuario sin ID único responde 400', async () => {
+    const res = mockRes();
+    await createUser(
+      {
+        body: {
+          name: 'Profesor Redes',
+          email: 'profe.redes@epn.edu.ec',
+          password: 'Password123!',
+          roleName: 'ADMIN',
+          career: 'Docente en Redes',
+          semester: 1,
+        },
+      },
+      res
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(res.payload.error).toContain('identificador único');
+  });
+
+  test('crear usuario sin carrera responde 400', async () => {
+    const res = mockRes();
+    await createUser(
+      {
+        body: {
+          name: 'Profesor Redes',
+          email: 'profe.redes@epn.edu.ec',
+          password: 'Password123!',
+          roleName: 'ADMIN',
+          semester: 1,
+          uniqueId: '987654321',
+        },
+      },
+      res
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(res.payload.error).toContain('carrera');
   });
 });
 
