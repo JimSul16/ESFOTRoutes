@@ -625,12 +625,26 @@ export const completeModule = async (req, res) => {
 
     if (existingProgress.rows.length) {
       const alreadyProgress = await getRouteProgress(userId, routeId);
+      // Mismo contrato de campos que una completación fresca: aquí no se
+      // otorga progreso nuevo (0), pero se devuelven todos los alias (RR-004)
+      // para que el frontend reciba siempre la misma forma de respuesta.
+      const currentUser = await turso.execute({
+        sql: `SELECT xp, level FROM User WHERE id = ?`,
+        args: [userId]
+      });
+      const totalXp    = currentUser.rows[0]?.xp || 0;
+      const totalLevel = currentUser.rows[0]?.level || Math.floor(totalXp / 1000) + 1;
       return res.status(200).json({
         message: 'Módulo ya completado anteriormente.',
         passed: true,
         progress: alreadyProgress,
+        xpGained: 0,
+        newTotalXp: totalXp,
+        newLevel: totalLevel,
         // Alias en español: el frontend renombra "XP" → "progreso" (RR-004).
-        newTotalProgress: alreadyProgress,
+        pointsGained: 0,
+        newTotalProgress: totalXp,
+        newProgressLevel: totalLevel
       });
     }
 
