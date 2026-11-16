@@ -182,6 +182,22 @@ describe('updateProfile — carrera y semestre obligatorios en el perfil (RR-003
     expect(res.statusCode).toBe(400);
     expect(res.payload.error).toContain('carrera');
   });
+
+  test('guardar con career+semester (payload documentado) NO falla por ID único', async () => {
+    const res = mockRes();
+    await updateProfile(
+      {
+        user: { id: 1 },
+        body: { name: 'Nombre Nuevo', career: academicOk.career, semester: academicOk.semester },
+      },
+      res
+    );
+
+    // Regresión: el validador exigía uniqueId y respondía 400 "El identificador
+    // único es obligatorio." aunque el ID no se edite desde el perfil.
+    expect(res.payload?.error ?? '').not.toContain('identificador único');
+    expect(res.statusCode).not.toBe(400);
+  });
 });
 
 describe('admin createUser — campos académicos obligatorios', () => {

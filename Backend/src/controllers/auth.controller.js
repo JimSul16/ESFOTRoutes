@@ -155,11 +155,16 @@ const handleFailedAttempt = async (user, req, res, reasonMessage) => {
  * solo se validan cuando vienen, para admitir actualizaciones parciales.
  * Cuando vienen, el formato se valida en ambos modos.
  *
+ * `{ requireUniqueId: false }` deja de exigir el ID único en modo `required`:
+ * `PUT /auth/profile` no lo edita (se asigna en el registro), así que exigirlo
+ * ahí rompía todo guardado de perfil con 400 "El identificador único es
+ * obligatorio." aunque el frontend enviara carrera y semestre.
+ *
  * @returns {string|null} Mensaje de error, o `null` si todo está bien.
  */
 export const validateAcademicFields = (
   { career, semester, uniqueId } = {},
-  { required = false } = {}
+  { required = false, requireUniqueId = true } = {}
 ) => {
   const isMissing = (value) => value === undefined || value === null || value === '';
 
@@ -179,7 +184,7 @@ export const validateAcademicFields = (
   }
 
   if (isMissing(uniqueId)) {
-    if (required) return 'El identificador único es obligatorio.';
+    if (required && requireUniqueId) return 'El identificador único es obligatorio.';
   } else {
     if (typeof uniqueId !== 'string' && typeof uniqueId !== 'number') {
       return 'El identificador único debe ser un valor de 9 dígitos.';
@@ -664,8 +669,13 @@ export const updateProfile = async (req, res) => {
       return res.status(400).json({ error: 'El nombre debe tener al menos 3 caracteres.' });
     }
 
-    // RR-003: carrera y semestre obligatorios en el perfil.
-    const academicError = validateAcademicFields({ career, semester }, { required: true });
+    // RR-003: carrera y semestre obligatorios en el perfil. El ID único NO se
+    // edita desde aquí (se asigna en el registro, RR-005 aplica a registro y
+    // CRUD de admin), así que no se exige en este guardado.
+    const academicError = validateAcademicFields(
+      { career, semester },
+      { required: true, requireUniqueId: false }
+    );
     if (academicError) {
       return res.status(400).json({ error: academicError });
     }
