@@ -17,7 +17,7 @@ describe('Button', () => {
 
   it('applies variant classes', () => {
     const { container } = render(<Button variant="danger">Delete</Button>);
-    expect(container.firstChild).toHaveClass('bg-red-600');
+    expect(container.firstChild).toHaveClass('bg-brand-600');
   });
 
   it('applies size classes', () => {
@@ -28,6 +28,20 @@ describe('Button', () => {
   it('is disabled when loading', () => {
     render(<Button disabled>Disabled</Button>);
     expect(screen.getByText('Disabled')).toBeDisabled();
+  });
+
+  it('muestra un spinner, bloquea el botón y anuncia la carga con isLoading', () => {
+    render(<Button isLoading>Guardar</Button>);
+
+    const button = screen.getByRole('button', { name: 'Guardar' });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(button.querySelector('svg')).toHaveClass('animate-spin');
+  });
+
+  it('ocupa todo el ancho con fullWidth', () => {
+    const { container } = render(<Button fullWidth>Ancho completo</Button>);
+    expect(container.firstChild).toHaveClass('w-full');
   });
 
   it('applies custom className', () => {

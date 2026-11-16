@@ -1,24 +1,58 @@
-import { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import { useEffect, useState } from 'react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import {
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Icon,
+  PageHeader,
+  Skeleton,
+  StatCard,
+} from '@/components/ui';
+import { useTheme } from '@/hooks/useTheme';
 import { getMyRoutes } from '../../../api/route.api';
 import { getSubjects } from '../../../api/graph.api';
 import { getWeeklyActivity } from '../../../api/analytics.api';
 import { getApiErrorMessage } from '../../../api/errors';
-import { Card, CardBody, CardHeader, Spinner } from '@/components/ui';
 import type { AnalyticsData, SubjectProgress, UserDashboard } from '../../../types';
 
-const COLORS = ['#006fc5', '#f59e0b', '#10b981', '#8b5cf6'];
+const DISTRIBUTION_COLORS = ['#dc2626', '#000000', '#a8a29e'];
 
 export interface AnalyticsDashboardProps {
   userData: UserDashboard;
 }
 
 const AnalyticsDashboard = ({ userData }: AnalyticsDashboardProps) => {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
   const [progressData, setProgressData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchAnalytics = async () => {
+      setLoading(true);
+      setError(null);
+
       try {
         // Antes usaba `httpClient.get('/graph/subjects')` y hacía
         // `subjectsRes.data`, que es el sobre `{ success, subjects }`, no un
@@ -82,84 +116,196 @@ const AnalyticsDashboard = ({ userData }: AnalyticsDashboardProps) => {
           },
         ].filter((item) => item.value > 0);
 
-        setProgressData({ subjectProgress, weeklyActivity, progressDistribution });
-      } catch (error: unknown) {
-        console.error('Error fetching analytics:', getApiErrorMessage(error));
+        if (!cancelled) {
+          setProgressData({ subjectProgress, weeklyActivity, progressDistribution });
+        }
+      } catch (caught: unknown) {
+        if (!cancelled) {
+          setError(getApiErrorMessage(caught, 'No se pudieron cargar tus estadísticas.'));
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchAnalytics();
-  }, [userData]);
+
+    return () => {
+      cancelled = true;
+    };
+    // `reloadKey` solo dispara el reintento manual.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
+  }, [reloadKey]);
+
+  const axisColor = isDark ? '#a8a29e' : '#78716c';
+  const gridColor = isDark ? '#292524' : '#e7e5e4';
+  const tooltipStyle = {
+    backgroundColor: isDark ? '#1c1917' : '#ffffff',
+    border: `1px solid ${gridColor}`,
+    borderRadius: '8px',
+    color: isDark ? '#f5f5f4' : '#1c1917',
+  };
+
+  const weeklyActivity = progressData?.weeklyActivity ?? [];
+  const hasWeeklyActivity = weeklyActivity.some((day) => day.minutes > 0);
+  const progressDistribution = progressData?.progressDistribution ?? [];
+  const subjectProgress = progressData?.subjectProgress ?? [];
+  const hasSubjects = subjectProgress.length > 0;
+
+  const completedModules = subjectProgress.reduce((acc, subject) => acc + subject.completed, 0);
+  const totalRoutes = progressDistribution.reduce((acc, entry) => acc + entry.value, 0);
 
   if (loading) {
     return (
-      <div className="flex justify-center py-12">
-        <Spinner size="lg" className="text-primary-600" />
+      <div aria-busy="true" className="animate-in fade-in space-y-6 duration-300">
+        <span className="sr-only">Cargando analítica de progreso…</span>
+
+        <Skeleton className="h-8 w-64" />
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          {[0, 1, 2, 3].map((index) => (
+            <Card key={index} padding="md" className="space-y-3">
+              <Skeleton className="w-1/2" />
+              <Skeleton variant="rect" className="h-8 w-20" />
+              <Skeleton className="w-2/3" />
+            </Card>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {[0, 1].map((index) => (
+            <Card key={index} padding="none">
+              <div className="border-b border-surface-100 px-6 py-4 dark:border-surface-800">
+                <Skeleton className="w-1/3" />
+              </div>
+              <div className="p-6">
+                <Skeleton variant="rect" className="h-64 w-full" />
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="animate-in fade-in space-y-6 duration-300">
+        <PageHeader
+          eyebrow="Aprendizaje"
+          title="Analítica de progreso"
+          description="Visualiza tu avance en cada materia y tu actividad de estudio."
+        />
+
+        <Card padding="md" role="alert" className="space-y-3 border-red-200/70 dark:border-red-500/20">
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400">
+              <Icon name="circleAlert" className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-surface-900 dark:text-white">
+                No pudimos cargar tu analítica
+              </p>
+              <p className="mt-0.5 text-xs text-surface-500 dark:text-surface-400">{error}</p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setReloadKey((key) => key + 1)}
+            iconLeft={<Icon name="refreshCw" className="h-3.5 w-3.5" />}
+          >
+            Reintentar
+          </Button>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      <div>
-        <h2 className="text-2xl font-display font-bold text-surface-900 dark:text-white">
-          Analítica de progreso
-        </h2>
-        <p className="text-surface-500 dark:text-surface-400 mt-1">
-          Visualiza tu avance en cada materia y tu actividad de estudio.
-        </p>
-      </div>
+    <div className="animate-in fade-in space-y-6 pb-12 duration-300 sm:space-y-8">
+      <PageHeader
+        eyebrow="Aprendizaje"
+        title="Analítica de progreso"
+        description="Visualiza tu avance en cada materia y tu actividad de estudio."
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardBody className="text-center">
-            <div className="text-3xl font-display font-bold text-primary-600">{userData?.xp || 0}</div>
-            <div className="text-sm text-surface-500">XP Total</div>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="text-center">
-            <div className="text-3xl font-display font-bold text-accent-500">{userData?.level || 1}</div>
-            <div className="text-sm text-surface-500">Nivel actual</div>
-          </CardBody>
-        </Card>
-        <Card>
-          <CardBody className="text-center">
-            <div className="text-3xl font-display font-bold text-emerald-500">{userData?.streak || 0}</div>
-            <div className="text-sm text-surface-500">Días de racha</div>
-          </CardBody>
-        </Card>
-      </div>
+      {/* Resumen */}
+      <section aria-label="Resumen de tu actividad" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <StatCard
+          label="Progreso total"
+          value={`${userData?.xp || 0} pts`}
+          hint="Puntos acumulados"
+          icon="zap"
+          tone="brand"
+        />
+        <StatCard
+          label="Nivel actual"
+          value={userData?.level || 1}
+          hint="Rango curricular"
+          icon="trophy"
+          tone="brand"
+        />
+        <StatCard
+          label="Días de racha"
+          value={userData?.streak || 0}
+          hint="Actividad consecutiva"
+          icon="flame"
+          tone="brand"
+        />
+        <StatCard
+          label="Módulos superados"
+          value={completedModules}
+          hint={`${totalRoutes} ${totalRoutes === 1 ? 'ruta inscrita' : 'rutas inscritas'}`}
+          icon="listChecks"
+          tone="brand"
+        />
+      </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <h3 className="font-display font-semibold text-surface-900 dark:text-white">Actividad semanal (minutos)</h3>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Actividad semanal */}
+        <Card padding="none">
+          <CardHeader className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-display text-sm font-bold text-surface-900 dark:text-white">
+                Actividad semanal
+              </h3>
+              <p className="mt-0.5 text-xs text-surface-500 dark:text-surface-400">
+                Minutos de estudio por día
+              </p>
+            </div>
+            <Icon name="activity" className="h-4 w-4 text-surface-400" />
           </CardHeader>
+
           <CardBody>
             <div className="h-64">
-              {progressData && progressData.weeklyActivity.every((day) => day.minutes === 0) ? (
-                // Estado vacío honesto: antes se pintaban minutos inventados.
-                <div className="h-full flex flex-col items-center justify-center text-center px-6">
-                  <p className="text-sm font-semibold text-surface-600 dark:text-surface-300">
+              {!hasWeeklyActivity ? (
+                <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                  <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-surface-100 text-surface-400 dark:bg-surface-800 dark:text-surface-500">
+                    <Icon name="activity" className="h-5 w-5" />
+                  </span>
+                  <p className="text-sm font-semibold text-surface-700 dark:text-surface-200">
                     Sin módulos superados esta semana
                   </p>
-                  <p className="text-xs text-surface-400 mt-1">
+                  <p className="mt-1 max-w-xs text-xs text-surface-500 dark:text-surface-400">
                     Completa y aprueba un módulo para que la actividad aparezca aquí.
                   </p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={progressData?.weeklyActivity || []}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
-                    <XAxis dataKey="day" stroke="#78716c" fontSize={12} />
-                    <YAxis stroke="#78716c" fontSize={12} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#fff', border: '1px solid #e7e5e4', borderRadius: '8px' }}
+                  <LineChart data={weeklyActivity}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                    <XAxis dataKey="day" stroke={axisColor} fontSize={12} tickLine={false} />
+                    <YAxis stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={tooltipStyle} />
+                    <Line
+                      type="monotone"
+                      dataKey="minutes"
+                      name="Minutos"
+                      stroke="#dc2626"
+                      strokeWidth={2}
+                      dot={{ fill: '#dc2626', r: 3 }}
+                      activeDot={{ r: 5 }}
                     />
-                    <Line type="monotone" dataKey="minutes" stroke="#006fc5" strokeWidth={2} dot={{ fill: '#006fc5' }} />
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -167,61 +313,136 @@ const AnalyticsDashboard = ({ userData }: AnalyticsDashboardProps) => {
           </CardBody>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <h3 className="font-display font-semibold text-surface-900 dark:text-white">Distribución de rutas</h3>
+        {/* Distribución */}
+        <Card padding="none">
+          <CardHeader className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-display text-sm font-bold text-surface-900 dark:text-white">
+                Distribución de rutas
+              </h3>
+              <p className="mt-0.5 text-xs text-surface-500 dark:text-surface-400">
+                Estado de tus inscripciones
+              </p>
+            </div>
+            {totalRoutes > 0 && (
+              <Badge variant="default" size="sm">
+                {totalRoutes} {totalRoutes === 1 ? 'ruta' : 'rutas'}
+              </Badge>
+            )}
           </CardHeader>
+
           <CardBody>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={progressData?.progressDistribution || []}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {(progressData?.progressDistribution || []).map((_entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="flex justify-center gap-4 mt-4">
-              {(progressData?.progressDistribution || []).map((entry, index) => (
-                <div key={entry.name} className="flex items-center gap-2 text-sm">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                  <span className="text-surface-600 dark:text-surface-300">{entry.name}</span>
+            {progressDistribution.length === 0 ? (
+              <div className="flex h-64 flex-col items-center justify-center px-6 text-center">
+                <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-surface-100 text-surface-400 dark:bg-surface-800 dark:text-surface-500">
+                  <Icon name="route" className="h-5 w-5" />
+                </span>
+                <p className="text-sm font-semibold text-surface-700 dark:text-surface-200">
+                  Todavía no tienes rutas inscritas
+                </p>
+                <p className="mt-1 max-w-xs text-xs text-surface-500 dark:text-surface-400">
+                  Inscríbete en una ruta del catálogo para ver tu distribución.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="h-52">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={progressDistribution}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={58}
+                        outerRadius={82}
+                        paddingAngle={4}
+                        dataKey="value"
+                      >
+                        {progressDistribution.map((entry, index) => (
+                          <Cell
+                            key={entry.name}
+                            fill={DISTRIBUTION_COLORS[index % DISTRIBUTION_COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip contentStyle={tooltipStyle} />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
+
+                <ul className="mt-2 flex flex-wrap justify-center gap-x-5 gap-y-2">
+                  {progressDistribution.map((entry, index) => (
+                    <li
+                      key={entry.name}
+                      className="flex items-center gap-2 text-xs font-medium text-surface-600 dark:text-surface-300"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{
+                          backgroundColor: DISTRIBUTION_COLORS[index % DISTRIBUTION_COLORS.length],
+                        }}
+                      />
+                      {entry.name}
+                      <span className="tabular-nums text-surface-400 dark:text-surface-500">
+                        ({entry.value})
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </CardBody>
         </Card>
       </div>
 
-      <Card>
+      {/* Progreso por materia */}
+      <Card padding="none">
         <CardHeader>
-          <h3 className="font-display font-semibold text-surface-900 dark:text-white">Progreso por materia</h3>
+          <h3 className="font-display text-sm font-bold text-surface-900 dark:text-white">
+            Progreso por materia
+          </h3>
+          <p className="mt-0.5 text-xs text-surface-500 dark:text-surface-400">
+            Módulos completados sobre el total de cada materia
+          </p>
         </CardHeader>
+
         <CardBody>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={progressData?.subjectProgress || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" />
-                <XAxis dataKey="name" stroke="#78716c" fontSize={12} />
-                <YAxis stroke="#78716c" fontSize={12} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #e7e5e4', borderRadius: '8px' }}
-                />
-                <Bar dataKey="completed" fill="#10b981" name="Completado" />
-                <Bar dataKey="total" fill="#e7e5e4" name="Total" />
-              </BarChart>
-            </ResponsiveContainer>
+            {!hasSubjects ? (
+              <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-surface-100 text-surface-400 dark:bg-surface-800 dark:text-surface-500">
+                  <Icon name="chartColumn" className="h-5 w-5" />
+                </span>
+                <p className="text-sm font-semibold text-surface-700 dark:text-surface-200">
+                  Aún no hay materias con progreso
+                </p>
+                <p className="mt-1 max-w-xs text-xs text-surface-500 dark:text-surface-400">
+                  El avance aparecerá cuando tengas rutas asociadas a una materia.
+                </p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={subjectProgress}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                  <XAxis dataKey="name" stroke={axisColor} fontSize={12} tickLine={false} />
+                  <YAxis stroke={axisColor} fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Bar
+                    dataKey="completed"
+                    fill="#dc2626"
+                    name="Completado"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="total"
+                    fill={isDark ? '#44403c' : '#e7e5e4'}
+                    name="Total"
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </CardBody>
       </Card>

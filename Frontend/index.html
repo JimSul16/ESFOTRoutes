@@ -6,13 +6,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Plataforma de rutas de aprendizaje personalizadas para estudiantes de la ESFOT. Organiza tu malla curricular, sigue tu progreso y domina las materias de especialidad con IA." />
     <meta name="author" content="Estudiantes TSDS - ESFOT" />
-    <meta name="theme-color" content="#006fc5" />
+    <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0c0a09" media="(prefers-color-scheme: dark)" />
     <meta property="og:title" content="Rutas ESFOT - Plataforma de Aprendizaje Personalizada" />
     <meta property="og:description" content="Organiza tu malla curricular, sigue tu progreso y domina las materias de especialidad con inteligencia artificial." />
     <meta property="og:type" content="website" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+    <script>
+      /*
+       * Aplica el tema antes del primer paint para evitar el flash de modo
+       * claro al recargar. Solo debe leer el storage; el estado de React se
+       * hidrata después y confirma la misma clase.
+       */
+      (function () {
+        try {
+          if (localStorage.getItem('theme') === 'dark') {
+            document.documentElement.classList.add('dark');
+          }
+        } catch {
+          /* Storage bloqueado (modo privado): se usa el tema claro. */
+        }
+      })();
+    </script>
     <title>Rutas ESFOT - Plataforma de Aprendizaje Personalizada</title>
   </head>
   <body>

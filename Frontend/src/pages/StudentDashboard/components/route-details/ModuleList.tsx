@@ -10,6 +10,7 @@ export interface ModuleListProps {
   loadingType?: AssessmentType | null;
   /** Abre el tutor IA con el contexto del módulo (GraphRAG). */
   onAskTutor?: (moduleId: string, moduleTitle: string) => void;
+  onViewAssessments?: (moduleId: string, moduleTitle: string) => void;
 }
 
 const ModuleList = ({
@@ -20,6 +21,7 @@ const ModuleList = ({
   isGeneratingAssessment,
   loadingType,
   onAskTutor,
+  onViewAssessments,
 }: ModuleListProps) => {
   if (!modules || modules.length === 0) {
     return (
@@ -43,6 +45,7 @@ const ModuleList = ({
           isGeneratingAssessment={isGeneratingAssessment}
           loadingType={loadingType}
           onAskTutor={onAskTutor}
+          onViewAssessments={onViewAssessments}
         />
       ))}
     </div>

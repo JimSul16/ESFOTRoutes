@@ -47,6 +47,7 @@ describe('UserFormModal — dominios de correo permitidos', () => {
 
     fill('name', 'Ana Pérez');
     fill('email', 'ana.perez@epn.edu.ec');
+    fill('uniqueId', '123456789');
     fill('password', 'Password123');
     guardar();
 
@@ -55,6 +56,7 @@ describe('UserFormModal — dominios de correo permitidos', () => {
     });
     expect(mockCreateUser.mock.calls[0]?.[0]).toMatchObject({
       email: 'ana.perez@epn.edu.ec',
+      uniqueId: '123456789',
     });
   });
 
@@ -65,6 +67,7 @@ describe('UserFormModal — dominios de correo permitidos', () => {
 
     fill('name', 'Carlos Ruiz');
     fill('email', 'carlos.ruiz@gmail.com');
+    fill('uniqueId', '123456789');
     fill('password', 'Password123');
     guardar();
 
@@ -73,6 +76,7 @@ describe('UserFormModal — dominios de correo permitidos', () => {
     });
     expect(mockCreateUser.mock.calls[0]?.[0]).toMatchObject({
       email: 'carlos.ruiz@gmail.com',
+      uniqueId: '123456789',
     });
   });
 
@@ -114,6 +118,7 @@ describe('UserFormModal — dominios de correo permitidos', () => {
 
     fill('name', 'Ana Pérez');
     fill('email', '  Ana.Perez@Gmail.COM  ');
+    fill('uniqueId', '123456789');
     fill('password', 'Password123');
     guardar();
 
@@ -122,6 +127,7 @@ describe('UserFormModal — dominios de correo permitidos', () => {
     });
     expect(mockCreateUser.mock.calls[0]?.[0]).toMatchObject({
       email: 'ana.perez@gmail.com',
+      uniqueId: '123456789',
     });
   });
 
@@ -130,6 +136,7 @@ describe('UserFormModal — dominios de correo permitidos', () => {
 
     fill('name', 'Ana Pérez');
     fill('email', 'ANA.PEREZ@EPN.EDU.EC');
+    fill('uniqueId', '123456789');
     fill('password', 'Password123');
     guardar();
 
@@ -138,6 +145,27 @@ describe('UserFormModal — dominios de correo permitidos', () => {
     });
     expect(mockCreateUser.mock.calls[0]?.[0]).toMatchObject({
       email: 'ana.perez@epn.edu.ec',
+      uniqueId: '123456789',
+    });
+  });
+
+  it('muestra toast de error cuando uniqueId ya está registrado (HTTP 409)', async () => {
+    mockCreateUser.mockRejectedValueOnce({
+      response: { status: 409, data: { message: 'Este identificador único ya está registrado.' } },
+    });
+
+    montar();
+
+    fill('name', 'Ana Pérez');
+    fill('email', 'ana.perez@epn.edu.ec');
+    fill('uniqueId', '123456789');
+    fill('password', 'Password123');
+    guardar();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Este ID único ya está registrado.')
+      ).toBeTruthy();
     });
   });
 

@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Button, Spinner } from '@/components/ui';
+import { useTheme } from '@/hooks/useTheme';
+import AppShell from '../../layouts/AppShell';
 import { getProfile } from '../../api/auth.api';
 import { getApiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../hooks/useAuth';
@@ -10,16 +13,12 @@ import UsersManager from './components/UsersManager';
 import ResourcesManager from './components/ResourcesManager';
 import RoutesManager from './components/RoutesManager';
 import RouteBuilder from './components/RouteBuilder';
-import RoleManager from './components/RoleManager';
 import AdminSidebar from './components/AdminSidebar';
 import AdminHeader from './components/AdminHeader';
+import { ADMIN_NAV_ITEMS } from './components/navigation';
 import AdminHome from './components/AdminHome';
 import AdminProfile from './components/AdminProfile';
 
-
-type Theme = 'light' | 'dark';
-
-const readStoredTheme = (): Theme => (localStorage.getItem('theme') === 'dark' ? 'dark' : 'light');
 
 /** El backend ya persiste `initials`; esto solo cubre datos antiguos. */
 const deriveInitials = (name: string) => {
@@ -31,7 +30,7 @@ const deriveInitials = (name: string) => {
 };
 
 const AdminDashboard = () => {
-  const [theme, setTheme] = useState<Theme>(readStoredTheme);
+  const { toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<AdminTab>('inicio');
   const [userData, setUserData] = useState<UserDashboard | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -39,15 +38,6 @@ const AdminDashboard = () => {
 
   const { logoutAuth } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    localStorage.setItem('theme', theme);
-  }, [theme]);
 
   const loadProfile = useCallback(async () => {
     setProfileError(null);
@@ -97,10 +87,6 @@ const AdminDashboard = () => {
     }
   };
 
-  const toggleTheme = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light');
-  };
-
   const handleLogout = () => {
     logoutAuth();
     navigate('/');
@@ -108,7 +94,7 @@ const AdminDashboard = () => {
 
   const renderContent = (user: UserDashboard) => {
     switch (activeTab) {
-      case 'inicio': return <AdminHome />;
+      case 'inicio': return <AdminHome onNavigate={setActiveTab} />;
       case 'usuarios': return <UsersManager />;
       case 'recursos': return <ResourcesManager />;
       case 'rutas': return <RoutesManager />;
@@ -118,7 +104,6 @@ const AdminDashboard = () => {
       case 'constructor': return (
         <RouteBuilder initialData={null} onCancel={() => setActiveTab('inicio')} onSaveSuccess={() => setActiveTab('rutas')} />
       );
-      case 'roles': return <RoleManager />;
       case 'perfil': return <AdminProfile userData={user} onPhotoUpdate={handleUpdateUserPhoto} />;
       default: return <div><h2 className="text-2xl font-display font-bold mb-4 text-surface-900 dark:text-white">Vista Activa: {activeTab}</h2><p className="text-surface-500 dark:text-surface-400">Módulo en construcción...</p></div>;
     }
@@ -126,12 +111,8 @@ const AdminDashboard = () => {
 
   if (loadingProfile) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-surface-50 dark:bg-surface-950">
-        <div
-          role="status"
-          aria-label="Cargando perfil"
-          className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-600"
-        />
+      <div className="flex h-dvh w-full items-center justify-center bg-surface-50 dark:bg-surface-950">
+        <Spinner size="lg" label="Cargando perfil" className="text-brand-600" />
       </div>
     );
   }
@@ -141,27 +122,21 @@ const AdminDashboard = () => {
   // error con reintento y salida.
   if (profileError || !userData) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-surface-50 dark:bg-surface-950 p-6">
-        <div className="max-w-md text-center space-y-6">
-          <h2 className="text-2xl font-display font-bold text-surface-900 dark:text-white">
+      <div className="flex h-dvh w-full items-center justify-center bg-surface-50 p-6 dark:bg-surface-950">
+        <div className="max-w-md space-y-6 text-center">
+          <h2 className="font-display text-2xl font-bold text-surface-900 dark:text-white">
             No pudimos cargar tu perfil
           </h2>
           <p className="text-surface-500 dark:text-surface-400">
             {profileError ?? 'La sesión no es válida o el servidor no responde.'}
           </p>
-          <div className="flex gap-3 justify-center">
-            <button
-              onClick={loadProfile}
-              className="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold shadow-md shadow-brand-600/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
-            >
+          <div className="flex justify-center gap-3">
+            <Button type="button" onClick={loadProfile}>
               Reintentar
-            </button>
-            <button
-              onClick={handleLogout}
-              className="px-5 py-2.5 rounded-xl font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/40 border border-rose-200/60 dark:border-rose-900/40 transition-all"
-            >
+            </Button>
+            <Button type="button" variant="danger" onClick={handleLogout}>
               Cerrar sesión
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -169,15 +144,26 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="h-screen w-screen bg-surface-50 dark:bg-surface-950 font-sans text-surface-900 dark:text-surface-100 flex overflow-hidden transition-colors duration-300">
-      <AdminSidebar activeTab={activeTab} setActiveTab={setActiveTab} toggleTheme={toggleTheme} onLogout={handleLogout} />
-      <div className="flex-1 flex flex-col h-full min-w-0 relative overflow-hidden">
-        <AdminHeader userData={userData} setActiveTab={setActiveTab} />
-        <main className="flex-1 p-6 md:p-10 overflow-y-auto">
-          {renderContent(userData)}
-        </main>
-      </div>
-    </div>
+    <AppShell
+      sidebar={
+        <AdminSidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          toggleTheme={toggleTheme}
+          onLogout={handleLogout}
+        />
+      }
+      header={<AdminHeader userData={userData} />}
+      mobileNav={{
+        items: ADMIN_NAV_ITEMS,
+        activeTab,
+        onNavigate: (tab) => setActiveTab(tab as AdminTab),
+        brandSubtitle: 'Administración',
+        onLogout: handleLogout,
+      }}
+    >
+      {renderContent(userData)}
+    </AppShell>
   );
 };
 

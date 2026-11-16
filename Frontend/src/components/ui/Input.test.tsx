@@ -19,6 +19,44 @@ describe('Input', () => {
     expect(screen.getByText('Required field')).toBeInTheDocument();
   });
 
+  it('asocia el error con aria-invalid y aria-describedby', () => {
+    const { container } = render(<Input label="Correo" error="Correo inválido" />);
+    const input = getInput(container);
+    const error = screen.getByText('Correo inválido');
+
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    expect(input).toHaveAttribute('aria-describedby', error.id);
+  });
+
+  it('muestra el hint y lo asocia al campo', () => {
+    const { container } = render(<Input label="Nombre" hint="Máximo 40 caracteres" />);
+    const input = getInput(container);
+    const hint = screen.getByText('Máximo 40 caracteres');
+
+    expect(input).not.toHaveAttribute('aria-invalid');
+    expect(input).toHaveAttribute('aria-describedby', hint.id);
+  });
+
+  it('prioriza el error sobre el hint', () => {
+    render(<Input hint="Ayuda" error="Obligatorio" />);
+
+    expect(screen.getByText('Obligatorio')).toBeInTheDocument();
+    expect(screen.queryByText('Ayuda')).toBeNull();
+  });
+
+  it('alterna la visibilidad de la contraseña', () => {
+    const { container } = render(<Input label="Contraseña" type="password" />);
+    const input = getInput(container);
+
+    expect(input).toHaveAttribute('type', 'password');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar contraseña' }));
+    expect(input).toHaveAttribute('type', 'text');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ocultar contraseña' }));
+    expect(input).toHaveAttribute('type', 'password');
+  });
+
   it('applies error styling', () => {
     const { container } = render(<Input error="Error" />);
     expect(getInput(container)).toHaveClass('border-red-500');

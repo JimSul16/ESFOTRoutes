@@ -107,3 +107,24 @@ describe('RouteBuilder — validación del archivo de portada', () => {
     expect(screen.getByAltText('Portada')).toBeTruthy();
   });
 });
+
+describe('RouteBuilder — Categorías de Software y Submódulos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetResources.mockResolvedValue([]);
+  });
+
+  it('ofrece las 7 categorías progresivas de Ingeniería de Software', async () => {
+    renderBuilder();
+    await waitFor(() => expect(mockGetResources).toHaveBeenCalled());
+
+    expect(screen.getByText('Fundamentos y Lógica de Programación')).toBeTruthy();
+    expect(screen.getByText('Estructuras de Datos y POO')).toBeTruthy();
+    expect(screen.getByText('Desarrollo Web Frontend')).toBeTruthy();
+    expect(screen.getByText('Desarrollo Backend y APIs')).toBeTruthy();
+    expect(screen.getByText('Bases de Datos y Persistencia')).toBeTruthy();
+    expect(screen.getByText('Arquitectura y Calidad de Software')).toBeTruthy();
+    expect(screen.getByText('DevOps, Infraestructura y Redes')).toBeTruthy();
+  });
+});
+

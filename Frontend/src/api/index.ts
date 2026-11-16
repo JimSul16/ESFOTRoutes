@@ -19,6 +19,7 @@ export {
   resetPassword,
   getSessions,
   unlockAccount,
+  getMyProgress,
 } from './auth.api';
 export type {
   AuthMessageResponse,
@@ -32,16 +33,27 @@ export type {
   UpdateProfilePayload,
   UpdateProfileResponse,
   UnlockAccountResult,
+  MyProgress,
+  MyProgressActivity,
+  MyProgressRoute,
 } from './auth.api';
 
 // Admin
-export { getUsers, createUser, updateUser, toggleUserStatus, unlockUser } from './admin.api';
+export {
+  getUsers,
+  createUser,
+  updateUser,
+  toggleUserStatus,
+  unlockUser,
+  getUserProgress,
+} from './admin.api';
 export type {
   AdminActionResponse,
   AdminRoleName,
   AdminUserMutationResponse,
   CreateUserPayload,
   UpdateUserPayload,
+  AdminUserProgress,
 } from './admin.api';
 
 // Resources
@@ -50,6 +62,13 @@ export {
   createResource,
   updateResource,
   deleteResource,
+  getResourceCatalog,
+} from './resource.api';
+export type {
+  CatalogQuery,
+  CatalogResourceItem,
+  CatalogResponse,
+  ResourceMutationResponse,
 } from './resource.api';
 
 // Routes
@@ -62,8 +81,13 @@ export {
   getMyRoutes,
   enrollRoute,
   completeModule,
+  getModuleAssessments,
 } from './route.api';
-export type { RouteMutationResponse } from './route.api';
+export type {
+  RouteMutationResponse,
+  ModuleAssessmentItem,
+  ModuleAssessmentsResponse,
+} from './route.api';
 
 // Chat
 export { sendChatMessage, generateAssessment } from './chat.api';

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { unlockAccount } from '../../api/auth.api';
+import { ThemeToggle, Icon } from '@/components/ui';
+import { useTheme } from '@/hooks/useTheme';
 
 type UnlockState = 'idle' | 'loading' | 'success' | 'invalid' | 'error';
 
@@ -16,6 +18,7 @@ const UnlockAccount = () => {
   const { token } = useParams();
   const [state, setState] = useState<UnlockState>('idle');
   const [message, setMessage] = useState('');
+  const { theme, toggleTheme } = useTheme();
 
   const handleUnlock = async () => {
     if (!token) {
@@ -38,23 +41,35 @@ const UnlockAccount = () => {
   };
 
   return (
-    <div className="min-h-screen bg-surface-50 dark:bg-surface-900 flex items-center justify-center p-6 transition-colors duration-300 font-sans">
-      <div className="w-full max-w-md bg-white dark:bg-surface-800 rounded-2xl shadow-soft border border-surface-100 dark:border-surface-700 p-8 md:p-12">
-        <div className="absolute top-0 left-0 w-full h-1 bg-primary-600 rounded-t-2xl" />
+    <div className="min-h-screen bg-surface-50 dark:bg-surface-950 flex items-center justify-center p-6 transition-colors duration-300 relative font-sans overflow-hidden">
+
+      {/* Ambient background glow, igual que Login/Register */}
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
+
+      <ThemeToggle
+        theme={theme}
+        onToggle={toggleTheme}
+        className="absolute top-6 right-6 z-10 md:top-10 md:right-10"
+      />
+
+      <div className="w-full max-w-md bg-white/95 dark:bg-surface-900/90 backdrop-blur-xl rounded-3xl shadow-xl border border-surface-200/80 dark:border-surface-800 p-8 md:p-12 relative overflow-hidden z-10">
+        <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-brand-600 via-brand-600 to-brand-500" />
 
         <div className="text-center">
           <div
             className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-6 ${
               state === 'success'
-                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600'
+                ? 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 border border-surface-200 dark:border-surface-700'
                 : state === 'invalid' || state === 'error'
-                ? 'bg-red-100 dark:bg-red-900/30 text-red-600'
-                : 'bg-primary-100 dark:bg-primary-900/30 text-primary-600'
+                ? 'bg-brand-50 dark:bg-brand-500/10 text-brand-500 border border-brand-200 dark:border-brand-500/20'
+                : 'bg-surface-100 dark:bg-surface-900/50 text-brand-600 dark:text-brand-400 border border-surface-200 dark:border-surface-700'
             }`}
           >
-            <span className="text-3xl" aria-hidden="true">
-              {state === 'success' ? '✓' : state === 'idle' || state === 'loading' ? '🔓' : '✕'}
-            </span>
+            <Icon
+              name={state === 'success' ? 'check' : state === 'invalid' || state === 'error' ? 'x' : 'lock'}
+              className="h-10 w-10"
+            />
           </div>
 
           <h1 className="text-2xl font-display font-bold text-surface-900 dark:text-white mb-2">
@@ -76,7 +91,7 @@ const UnlockAccount = () => {
           {message && state !== 'loading' && state !== 'idle' && (
             <p
               className={`text-sm mb-8 ${
-                state === 'success' ? 'text-emerald-600' : 'text-red-600'
+                state === 'success' ? 'text-surface-900 dark:text-surface-100' : 'text-brand-600 dark:text-brand-400'
               }`}
               role="status"
             >
@@ -87,7 +102,7 @@ const UnlockAccount = () => {
           {state === 'success' ? (
             <Link
               to="/login"
-              className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 rounded-lg transition-all"
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-xs hover:shadow-brand-500/20"
             >
               Ir a iniciar sesión
             </Link>
@@ -95,7 +110,7 @@ const UnlockAccount = () => {
             <button
               onClick={handleUnlock}
               disabled={state === 'loading'}
-              className="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 rounded-lg transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3.5 rounded-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed shadow-xs hover:shadow-brand-500/20"
             >
               {state === 'idle' ? 'Desbloquear mi cuenta' : 'Reintentar'}
             </button>
@@ -103,7 +118,7 @@ const UnlockAccount = () => {
 
           <p className="mt-6 text-center text-sm text-surface-500">
             ¿Recordaste tu contraseña?{' '}
-            <Link to="/forgot" className="text-primary-600 dark:text-primary-400 hover:underline">
+            <Link to="/forgot" className="text-brand-600 dark:text-brand-400 hover:underline">
               Recuperar acceso
             </Link>
           </p>

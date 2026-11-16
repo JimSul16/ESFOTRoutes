@@ -5,6 +5,9 @@ node_modules/
 .env
 .env.*
 !.env.example
+# Build de produccion del frontend: solo contiene VITE_API_URL (URL publica de
+# la API, no secretos) y evita que el bundle apunte a http://localhost:3000.
+!.env.production
 *.env
 
 # Local Databases & Logs

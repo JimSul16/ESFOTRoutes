@@ -1,9 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  Icon,
+  PageHeader,
+  Skeleton,
+  type BadgeVariant,
+} from '@/components/ui';
 import { getResources, deleteResource } from '../../../api/resource.api';
 import { getApiErrorMessage } from '../../../api/errors';
 import ResourceBuilder from './ResourceBuilder';
 import type { Resource } from '../../../types';
+
+type ResourceFilterType = 'ALL' | 'PDF' | 'VIDEO' | 'LINK' | 'IMAGE';
 
 const sanitizeUrl = (url: string) => {
   if (!url) return '#';
@@ -11,34 +24,74 @@ const sanitizeUrl = (url: string) => {
   return '#';
 };
 
+const TYPE_TONES: Record<string, BadgeVariant> = {
+  VIDEO: 'warning',
+  PDF: 'accent',
+  IMAGE: 'brand',
+  LINK: 'default',
+  DOCUMENT: 'accent',
+};
+
 const ResourcesManager = () => {
   const [resources, setResources] = useState<Resource[]>([]);
   const [fetching, setFetching] = useState(true);
   const [currentView, setCurrentView] = useState<'list' | 'form'>('list');
   const [resourceToEdit, setResourceToEdit] = useState<Resource | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const loadResources = async () => {
-    setFetching(true);
-    try {
-      const data = await getResources();
-      setResources(data);
-    } catch (error: unknown) {
-      toast.error(getApiErrorMessage(error, 'Error al cargar los recursos'));
-    } finally {
-      setFetching(false);
-    }
+  // Filtros y búsqueda
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<ResourceFilterType>('ALL');
+
+  const filteredResources = resources.filter((res) => {
+    const matchesType = typeFilter === 'ALL' || res.type === typeFilter;
+    if (!matchesType) return false;
+    if (!searchQuery.trim()) return true;
+    const term = searchQuery.toLowerCase().trim();
+    const titleMatch = res.title.toLowerCase().includes(term);
+    const descMatch = (res.description ?? '').toLowerCase().includes(term);
+    return titleMatch || descMatch;
+  });
+
+  const hasActiveFilter = searchQuery.trim().length > 0 || typeFilter !== 'ALL';
+
+  const handleClearFilters = () => {
+    setSearchQuery('');
+    setTypeFilter('ALL');
   };
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadResources = async () => {
+      setFetching(true);
+      try {
+        const data = await getResources();
+        if (!cancelled) setResources(data);
+      } catch (error: unknown) {
+        toast.error(getApiErrorMessage(error, 'Error al cargar los recursos'));
+      } finally {
+        if (!cancelled) setFetching(false);
+      }
+    };
+
     loadResources();
-  }, []);
+
+    return () => {
+      cancelled = true;
+    };
+    // `reloadKey` solo dispara el refresco tras una mutación.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
+  }, [reloadKey]);
+
+  const refreshResources = () => setReloadKey((key) => key + 1);
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('¿Estás seguro de eliminar este recurso?')) return;
     try {
       await deleteResource(id);
       toast.success('Recurso eliminado exitosamente');
-      loadResources();
+      refreshResources();
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Error al eliminar el recurso'));
     }
@@ -58,105 +111,247 @@ const ResourcesManager = () => {
     setCurrentView('list');
     setResourceToEdit(null);
     if (wasSaved) {
-      loadResources();
+      refreshResources();
     }
   };
 
   if (currentView === 'form') {
     return (
-      <ResourceBuilder 
-        initialData={resourceToEdit} 
-        onCancel={() => handleFormClose(false)} 
-        onSaveSuccess={() => handleFormClose(true)} 
+      <ResourceBuilder
+        initialData={resourceToEdit}
+        onCancel={() => handleFormClose(false)}
+        onSaveSuccess={() => handleFormClose(true)}
       />
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
-        
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-display font-bold text-surface-900 dark:text-white">Gestión de Recursos</h1>
-            <p className="text-surface-500 dark:text-surface-400 mt-2">Catálogo centralizado de materiales y archivos para tus rutas.</p>
-          </div>
-          <button 
+    <div className="animate-in fade-in mx-auto max-w-6xl space-y-6 pb-12 duration-300 sm:space-y-8">
+      <PageHeader
+        eyebrow="Administración"
+        title="Gestión de Recursos"
+        description="Catálogo centralizado de materiales y archivos para tus rutas."
+        actions={
+          <Button
+            type="button"
             onClick={handleCreateNew}
-            className="px-5 py-2.5 bg-brand-600 hover:bg-brand-500 text-white font-semibold rounded-xl shadow-md shadow-brand-600/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center gap-2 text-sm"
+            iconLeft={<Icon name="plus" className="h-4 w-4" />}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
             Agregar Nuevo Recurso
-          </button>
-        </div>
+          </Button>
+        }
+      />
 
-        <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-2xl p-6 md:p-8 shadow-sm">
-          <h2 className="text-lg font-display font-semibold text-surface-900 dark:text-white mb-6">Recursos Disponibles</h2>
-          
-          {fetching ? (
-            <p className="text-surface-500 dark:text-surface-400 text-center py-4">Cargando catálogo...</p>
-          ) : resources.length === 0 ? (
-            <p className="text-surface-500 dark:text-surface-400 text-center py-4">No hay recursos guardados aún.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-surface-200 dark:border-surface-800">
-                    <th className="py-4 px-4 font-semibold text-surface-500 dark:text-surface-400">Título</th>
-                    <th className="py-4 px-4 font-semibold text-surface-500 dark:text-surface-400">Tipo</th>
-                    <th className="py-4 px-4 font-semibold text-surface-500 dark:text-surface-400">Enlace / Archivo</th>
-                    <th className="py-4 px-4 font-semibold text-surface-500 dark:text-surface-400 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resources.map((resource) => (
-                    <tr key={resource.id} className="border-b border-surface-200/50 dark:border-surface-800/50 hover:bg-surface-100 dark:hover:bg-surface-800/50 transition-colors">
-                      <td className="py-4 px-4 font-medium text-surface-900 dark:text-white max-w-[200px] truncate" title={resource.title}>
-                        {resource.title}
-                      </td>
-                      <td className="py-4 px-4">
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                          resource.type === 'VIDEO' ? 'bg-brand-50 text-brand-700 dark:bg-brand-950/60 dark:text-brand-300 border-brand-200/60 dark:border-brand-800/60' :
-                          resource.type === 'PDF' ? 'bg-accent-50 text-accent-700 dark:bg-accent-950/60 dark:text-accent-300 border-accent-200/60 dark:border-accent-800/60' :
-                          resource.type === 'IMAGE' ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200/60 dark:border-purple-800/60' :
-                          'bg-primary-50 text-primary-700 dark:bg-primary-950/60 dark:text-primary-300 border-primary-200/60 dark:border-primary-800/60'
-                        }`}>
-                          {resource.type}
-                        </span>
-                      </td>
-                      <td className="py-4 px-4 text-brand-600 dark:text-brand-400 text-sm">
-                        <a href={sanitizeUrl(resource.url)} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-1 w-max font-medium">
-                          Ver Recurso
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                        </a>
-                      </td>
-                      <td className="py-4 px-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleEdit(resource)}
-                            aria-label="Editar recurso"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/40 hover:bg-brand-100 dark:hover:bg-brand-900/40 border border-brand-200/60 dark:border-brand-800/40 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => handleDelete(resource.id)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 border border-rose-200/60 dark:border-rose-800/40 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            Eliminar
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      <Card padding="none" className="overflow-hidden">
+        <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-display text-base font-bold text-surface-900 dark:text-white">
+              Recursos Disponibles
+            </h2>
+            <p className="mt-0.5 text-xs text-surface-500 dark:text-surface-400">
+              Materiales reutilizables en los módulos de las rutas.
+            </p>
+          </div>
+
+          {!fetching && (
+            <Badge variant={hasActiveFilter ? 'brand' : 'default'} size="sm">
+              {hasActiveFilter
+                ? `${filteredResources.length} de ${resources.length} recursos`
+                : `${resources.length} ${resources.length === 1 ? 'recurso' : 'recursos'}`}
+            </Badge>
           )}
-        </div>
+        </CardHeader>
 
-      </div>
+        {/* Barra de herramientas: Búsqueda y Filtro por Tipo */}
+        {!fetching && resources.length > 0 && (
+          <div className="flex flex-col gap-3 border-b border-surface-100 bg-surface-50/50 p-4 dark:border-surface-800 dark:bg-surface-850/40 sm:flex-row sm:items-center sm:p-5">
+            <div className="relative flex-1">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-surface-400">
+                <Icon name="search" className="h-4 w-4" />
+              </span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar recurso por título o descripción..."
+                className="w-full rounded-control border border-surface-200 bg-white py-2 pl-9 pr-8 text-sm text-surface-900 placeholder:text-surface-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-surface-700 dark:bg-surface-900 dark:text-white"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Limpiar búsqueda"
+                  className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-200"
+                >
+                  <Icon name="x" className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value as ResourceFilterType)}
+                aria-label="Filtrar por tipo"
+                className="rounded-control border border-surface-200 bg-white px-3 py-2 text-sm text-surface-700 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-200"
+              >
+                <option value="ALL">Todos los tipos</option>
+                <option value="PDF">PDF</option>
+                <option value="VIDEO">Video</option>
+                <option value="LINK">Enlace</option>
+                <option value="IMAGE">Imagen</option>
+              </select>
+
+              {hasActiveFilter && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearFilters}
+                  iconLeft={<Icon name="x" className="h-3.5 w-3.5" />}
+                >
+                  Limpiar
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {fetching ? (
+          <ul aria-busy="true" className="divide-y divide-surface-100 dark:divide-surface-800">
+            <span className="sr-only">Cargando catálogo de recursos…</span>
+            {[0, 1, 2, 3].map((index) => (
+              <li key={index} className="flex items-center gap-4 px-6 py-4">
+                <Skeleton variant="rect" className="h-9 w-9 shrink-0" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="w-1/3" />
+                  <Skeleton className="w-1/4" />
+                </div>
+                <Skeleton className="hidden h-6 w-20 sm:block" />
+              </li>
+            ))}
+          </ul>
+        ) : resources.length === 0 ? (
+          <EmptyState
+            icon="bookOpen"
+            title="No hay recursos guardados aún"
+            description="Agrega PDFs, videos, imágenes o enlaces para enriquecer los módulos de tus rutas."
+            action={
+              <Button
+                type="button"
+                onClick={handleCreateNew}
+                iconLeft={<Icon name="plus" className="h-4 w-4" />}
+              >
+                Agregar primer recurso
+              </Button>
+            }
+          />
+        ) : filteredResources.length === 0 ? (
+          <EmptyState
+            icon="search"
+            title="No se encontraron recursos"
+            description="No hay recursos que coincidan con los criterios de búsqueda seleccionados."
+            action={
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleClearFilters}
+                iconLeft={<Icon name="refreshCw" className="h-3.5 w-3.5" />}
+              >
+                Limpiar filtros
+              </Button>
+            }
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[48rem] border-collapse text-left">
+              <thead>
+                <tr className="bg-surface-50 text-2xs uppercase tracking-wider text-surface-500 dark:bg-surface-850 dark:text-surface-400">
+                  <th scope="col" className="px-6 py-3 font-semibold">
+                    Título
+                  </th>
+                  <th scope="col" className="px-6 py-3 font-semibold">
+                    Tipo
+                  </th>
+                  <th scope="col" className="px-6 py-3 font-semibold">
+                    Enlace / Archivo
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-right font-semibold">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
+                {filteredResources.map((resource) => (
+                  <tr
+                    key={resource.id}
+                    className="transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/40"
+                  >
+                    <td className="max-w-[18rem] px-6 py-4">
+                      <p
+                        className="truncate text-sm font-semibold text-surface-900 dark:text-surface-100"
+                        title={resource.title}
+                      >
+                        {resource.title}
+                      </p>
+                      {resource.description && (
+                        <p className="mt-0.5 truncate text-xs text-surface-500 dark:text-surface-400">
+                          {resource.description}
+                        </p>
+                      )}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <Badge variant={TYPE_TONES[resource.type] ?? 'default'} size="sm">
+                        {resource.type}
+                      </Badge>
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <a
+                        href={sanitizeUrl(resource.url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline dark:text-brand-400 dark:hover:text-brand-300"
+                      >
+                        Ver Recurso
+                        <Icon name="externalLink" className="h-3.5 w-3.5" />
+                      </a>
+                    </td>
+
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(resource)}
+                          aria-label={`Editar ${resource.title}`}
+                          iconLeft={<Icon name="pencil" className="h-3.5 w-3.5" />}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDelete(resource.id)}
+                          aria-label={`Eliminar ${resource.title}`}
+                          iconLeft={<Icon name="trash" className="h-3.5 w-3.5" />}
+                        >
+                          Eliminar
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 };
 

@@ -244,8 +244,8 @@ const Chatbot = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-base sm:text-lg leading-tight">Tutor IA EPN</h3>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-400/20 text-emerald-200 border border-emerald-300/30">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-surface-100/15 text-surface-100 border border-surface-100/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-surface-100 animate-pulse" />
                   Activo
                 </span>
               </div>
@@ -326,7 +326,7 @@ const Chatbot = ({
                       onClick={() => handleAsignarReto(msg.text, idx)}
                       className={`mt-3 self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
                         retoEnviadoId === idx
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20' 
+                          ? 'bg-surface-200 text-surface-800 border-surface-300 hover:bg-surface-300 dark:bg-surface-700 dark:text-surface-100 dark:border-surface-600 dark:hover:bg-surface-600' 
                           : 'bg-brand-50 dark:bg-brand-500/10 text-brand-700 dark:text-brand-300 border-brand-200/80 dark:border-brand-500/20 hover:bg-brand-100 dark:hover:bg-brand-500/20'
                       }`}
                     >
@@ -367,7 +367,7 @@ const Chatbot = ({
                 <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                 <span className="truncate font-medium">{selectedFile.name}</span>
               </div>
-              <button type="button" onClick={() => setSelectedFile(null)} aria-label="Quitar archivo adjunto" className="hover:text-rose-500 transition-colors p-1">
+              <button type="button" onClick={() => setSelectedFile(null)} aria-label="Quitar archivo adjunto" className="hover:text-brand-500 transition-colors p-1">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>

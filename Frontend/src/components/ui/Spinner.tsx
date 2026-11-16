@@ -1,4 +1,5 @@
 import type { SVGAttributes } from 'react';
+import { cn } from '@/utils/cn';
 
 const sizes = {
   sm: 'w-4 h-4',
@@ -10,16 +11,22 @@ export type SpinnerSize = keyof typeof sizes;
 
 export interface SpinnerProps extends SVGAttributes<SVGSVGElement> {
   size?: SpinnerSize;
+  /** Texto para lectores de pantalla. Sin `label` el icono es decorativo. */
+  label?: string;
 }
 
-const Spinner = ({ size = 'md', className = '', ...props }: SpinnerProps) => {
+const Spinner = ({ size = 'md', label, className = '', ...props }: SpinnerProps) => {
   return (
     <svg
-      className={`animate-spin ${sizes[size]} ${className}`}
+      role={label ? 'status' : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : 'true'}
+      className={cn('animate-spin', sizes[size], className)}
       fill="none"
       viewBox="0 0 24 24"
       {...props}
     >
+      {label && <title>{label}</title>}
       <circle
         className="opacity-25"
         cx="12"

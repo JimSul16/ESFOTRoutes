@@ -7,6 +7,9 @@ import type {
   LoginCredentials,
   LoginResponse,
   LoginSuccessResponse,
+  MyProgress,
+  MyProgressActivity,
+  MyProgressRoute,
   RegisterData,
   ResetPasswordData,
   SessionEntry,
@@ -22,6 +25,9 @@ export type {
   LoginCredentials,
   LoginResponse,
   LoginSuccessResponse,
+  MyProgress,
+  MyProgressActivity,
+  MyProgressRoute,
   RegisterData,
   ResetPasswordData,
   UpdateProfilePayload,
@@ -29,16 +35,17 @@ export type {
 };
 
 /**
- * `POST /auth/login` devuelve 200 con token JWT y datos de usuario.
+ * `POST /auth/login` devuelve 200 con token, o 206 cuando exige un segundo paso
+ * con OTP. El discriminante es la presencia de `token`: úsalo antes de navegar.
  */
 export const login = async (credentials: LoginCredentials): Promise<LoginResponse> => {
   const response = await httpClient.post<LoginResponse>('/auth/login', credentials);
   return response.data;
 };
 
-/** Helper: confirma que el login devolvió token. */
+/** Narrowing helper: `true` solo cuando el login devolvió token. */
 export const isLoginSuccess = (res: LoginResponse): res is LoginSuccessResponse =>
-  typeof res?.token === 'string';
+  typeof res.token === 'string';
 
 export const register = async (userData: RegisterData): Promise<AuthMessageResponse> => {
   const response = await httpClient.post<AuthMessageResponse>('/auth/register', userData);
@@ -96,6 +103,13 @@ export const getSessions = async (): Promise<SessionEntry[]> => {
   const response = await httpClient.get<SessionEntry[]>('/auth/sessions');
   // `SessionEntry.id` llega como número desde Turso.
   return response.data.map((session) => ({ ...session, id: toId(session.id) ?? session.id }));
+};
+
+// ─── Progreso personal (RR-004) ───────────────────────────────────────────────
+
+export const getMyProgress = async (): Promise<MyProgress> => {
+  const response = await httpClient.get<MyProgress>('/auth/my-progress');
+  return response.data;
 };
 
 // ─── Desbloqueo de cuenta ─────────────────────────────────────────────────────

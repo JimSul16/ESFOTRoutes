@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Button, Icon, Spinner } from '@/components/ui';
+import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '../../hooks/useAuth';
+import AppShell from '../../layouts/AppShell';
 import { getProfile } from '../../api/auth.api';
 import { getRoutes, getMyRoutes } from '../../api/route.api';
 import { getApiErrorMessage } from '../../api/errors';
@@ -15,6 +18,7 @@ import { XP_PER_LEVEL } from '../../utils/progress';
 
 import StudentSidebar from './components/StudentSidebar';
 import StudentHeader from './components/StudentHeader';
+import { STUDENT_NAV_ITEMS } from './components/navigation';
 import DashboardHome from './components/DashboardHome';
 import RouteExplorer from './components/RouteExplorer';
 import RouteDetails from './components/RouteDetails';
@@ -24,6 +28,7 @@ import StudentProfile from './components/StudentProfile';
 import SelfDiagnosisModal from './components/SelfDiagnosisModal';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import Recommendations from './components/Recommendations';
+import ResourcesCatalog from './components/ResourcesCatalog';
 
 /**
  * Pestañas del panel del estudiante.
@@ -36,13 +41,10 @@ export type StudentTab =
   | 'inicio'
   | 'explorar'
   | 'mis-rutas'
+  | 'recursos'
   | 'perfil'
   | 'analytics'
   | 'detalle-ruta';
-
-export type Theme = 'light' | 'dark';
-
-const readStoredTheme = (): Theme => (localStorage.getItem('theme') === 'dark' ? 'dark' : 'light');
 
 /** El backend persiste `initials`; esto solo cubre datos antiguos. */
 const deriveInitials = (name: string) => {
@@ -59,7 +61,7 @@ interface ChatModuleRef {
 }
 
 const StudentDashboard = () => {
-  const [theme, setTheme] = useState<Theme>(readStoredTheme);
+  const { toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<StudentTab>('inicio');
   const [previousTab, setPreviousTab] = useState<StudentTab>('explorar');
   const [routeViewMode, setRouteViewMode] = useState<'teoria' | 'practica'>('teoria');
@@ -89,15 +91,6 @@ const StudentDashboard = () => {
       return saved;
     }
   });
-
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    localStorage.setItem('theme', theme);
-  }, [theme]);
 
   const loadProfile = useCallback(async () => {
     setProfileError(null);
@@ -166,8 +159,6 @@ const StudentDashboard = () => {
     );
   }, [contextoEvaluacion]);
 
-  const toggleTheme = () => setTheme(theme === 'light' ? 'dark' : 'light');
-
   const handleLogout = () => {
     logoutAuth();
     navigate('/');
@@ -175,24 +166,6 @@ const StudentDashboard = () => {
 
   const handleOpenChat = (moduleId: string | null = null, moduleTitle: string | null = null) => {
     setActiveModuleForChat({ id: moduleId, title: moduleTitle });
-    setShowChat(true);
-  };
-
-  const handleSendCodeToAI = (code: string, language: string, output?: string) => {
-    let mensajeFormateado: string;
-    if (language === 'multitask') {
-      mensajeFormateado = code;
-    } else {
-      let instruccionFinal: string;
-      if (typeof contextoEvaluacion === 'object') {
-        instruccionFinal = (contextoEvaluacion?.context as string) || 'Reto práctico.';
-      } else {
-        instruccionFinal = contextoEvaluacion || selectedRoute?.description || 'Resuelve el problema planteado.';
-      }
-      mensajeFormateado = `¡Hola! Necesito que evalúes mi código en ${language}.\n\nInstrucción del reto:\n${instruccionFinal}\n\nMi código:\n${code}\n\nSalida en consola:\n${output || 'Sin salida en consola'}`;
-    }
-
-    setCodeToEvaluate(mensajeFormateado);
     setShowChat(true);
   };
 
@@ -298,6 +271,8 @@ const StudentDashboard = () => {
             }}
           />
         );
+      case 'recursos':
+        return <ResourcesCatalog />;
       case 'perfil':
         return (
           <StudentProfile
@@ -317,7 +292,6 @@ const StudentDashboard = () => {
             onBack={() => setActiveTab(previousTab)}
             contextoEvaluacion={contextoEvaluacion}
             setContextoEvaluacion={setContextoEvaluacion}
-            onSendToAI={handleSendCodeToAI}
             onOpenChat={handleOpenChat}
             onAssessmentComplete={handleAssessmentComplete}
             isAlreadyEnrolled={Boolean(selectedRoute && enrolledRouteIds.includes(selectedRoute.id))}
@@ -325,9 +299,9 @@ const StudentDashboard = () => {
         );
       default:
         return (
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800">
-            <h2 className="text-2xl font-bold mb-4">Vista Activa: {activeTab}</h2>
-            <p className="text-slate-500">Módulo en construcción.</p>
+          <div className="rounded-card border border-surface-200 bg-white p-8 dark:border-surface-800 dark:bg-surface-900">
+            <h2 className="mb-4 text-2xl font-bold">Vista Activa: {activeTab}</h2>
+            <p className="text-surface-500 dark:text-surface-400">Módulo en construcción.</p>
           </div>
         );
     }
@@ -335,12 +309,8 @@ const StudentDashboard = () => {
 
   if (loadingProfile) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div
-          role="status"
-          aria-label="Cargando perfil"
-          className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-600"
-        />
+      <div className="flex h-dvh w-full items-center justify-center bg-surface-50 dark:bg-surface-950">
+        <Spinner size="lg" label="Cargando perfil" className="text-brand-600" />
       </div>
     );
   }
@@ -349,27 +319,21 @@ const StudentDashboard = () => {
   // el panel girando indefinidamente sin salida.
   if (profileError || !userData) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6">
-        <div className="max-w-md text-center space-y-6">
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">
+      <div className="flex h-dvh w-full items-center justify-center bg-surface-50 p-6 dark:bg-surface-950">
+        <div className="max-w-md space-y-6 text-center">
+          <h2 className="font-display text-2xl font-bold text-surface-900 dark:text-white">
             No pudimos cargar tu perfil
           </h2>
-          <p className="text-slate-500 dark:text-slate-400">
+          <p className="text-surface-500 dark:text-surface-400">
             {profileError ?? 'La sesión no es válida o el servidor no responde.'}
           </p>
-          <div className="flex gap-3 justify-center">
-            <button
-              onClick={loadProfile}
-              className="px-5 py-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-semibold hover:opacity-90 transition-opacity"
-            >
+          <div className="flex justify-center gap-3">
+            <Button type="button" onClick={loadProfile}>
               Reintentar
-            </button>
-            <button
-              onClick={handleLogout}
-              className="px-5 py-2.5 rounded-xl font-semibold text-red-500 bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 transition-colors"
-            >
+            </Button>
+            <Button type="button" variant="danger" onClick={handleLogout}>
               Cerrar sesión
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -377,26 +341,31 @@ const StudentDashboard = () => {
   }
 
   return (
-    <div className="h-screen w-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 flex overflow-hidden transition-colors duration-300">
-
-      <StudentSidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        userData={userData} 
-        toggleTheme={toggleTheme} 
-        onLogout={handleLogout}
-        onOpenSelfDiagnosis={() => setShowSelfDiagnosis(true)}
-      />
-
-      <div className="flex-1 flex flex-col h-full min-w-0 relative overflow-hidden">
-        <StudentHeader
-          userData={userData}
-          setActiveTab={setActiveTab}
-        />
-        <main className="flex-1 p-6 md:p-10 overflow-y-auto">
-          {renderContent(userData)}
-        </main>
-      </div>
+    <>
+      <AppShell
+        sidebar={
+          <StudentSidebar
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            userData={userData}
+            toggleTheme={toggleTheme}
+            onLogout={handleLogout}
+            onOpenSelfDiagnosis={() => setShowSelfDiagnosis(true)}
+          />
+        }
+        header={<StudentHeader userData={userData} />}
+        mobileNav={{
+          items: STUDENT_NAV_ITEMS,
+          activeTab,
+          onNavigate: (tab) => setActiveTab(tab as StudentTab),
+          brandSubtitle: 'Estudiante',
+          onLogout: handleLogout,
+          onOpenSelfDiagnosis: () => setShowSelfDiagnosis(true),
+          selfDiagnosisLabel: 'Autodiagnóstico',
+        }}
+      >
+        {renderContent(userData)}
+      </AppShell>
 
       <SelfDiagnosisModal
         isOpen={showSelfDiagnosis}
@@ -415,20 +384,20 @@ const StudentDashboard = () => {
         onCodeEvaluated={() => setCodeToEvaluate(null)}
       />
 
-
       {!showChat && (
         <button
+          type="button"
           onClick={() => {
             setActiveModuleForChat(null);
             setShowChat(true);
           }}
           aria-label="Abrir el tutor IA"
-          className="fixed bottom-8 right-8 bg-slate-900 dark:bg-white text-white dark:text-slate-900 p-4 rounded-full shadow-2xl shadow-slate-900/50 hover:scale-110 transition-transform z-50 flex items-center justify-center group"
+          className="fixed bottom-24 right-4 z-50 flex items-center justify-center rounded-full bg-surface-900 p-4 text-white shadow-2xl shadow-surface-900/30 transition-transform hover:scale-105 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus/50 dark:bg-white dark:text-surface-900 md:bottom-8 md:right-8"
         >
-          <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+          <Icon name="messageCircle" className="h-7 w-7" />
         </button>
       )}
-    </div>
+    </>
   );
 };
 

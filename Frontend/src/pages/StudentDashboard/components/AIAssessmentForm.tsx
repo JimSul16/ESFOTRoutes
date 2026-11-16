@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'react-toastify';
+import { Icon } from '@/components/ui';
 import { completeModule } from '../../../api/route.api';
 import { getApiErrorMessage } from '../../../api/errors';
 import type { AssessmentData, AssessmentType, CompleteModuleResponse } from '../../../types';
@@ -61,7 +62,8 @@ const AIAssessmentForm = ({
     try {
       const res = await completeModule({ moduleId, score: percentage, passed: isPassed });
 
-      toast.success(res.message || '¡Módulo completado con éxito! (+50 XP)');
+      const gained = res.pointsGained ?? res.xpGained ?? 50;
+      toast.success(res.message || `¡Módulo completado con éxito! (+${gained} pts de progreso)`);
       onAssessmentComplete?.(res);
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'No se pudo registrar el progreso del módulo.'));
@@ -78,12 +80,12 @@ const AIAssessmentForm = ({
       <div className="flex items-center justify-between mb-8 border-b border-gray-800 pb-4">
         <div>
           <h2 className="text-2xl font-black text-white flex items-center gap-2">
-            <span className="text-brand-500">⚡</span> {assessmentType === 'completa' ? 'Reto Final de Certificación IA' : 'Prueba de Conocimiento IA'}
+            <Icon name="zap" className="h-6 w-6 text-brand-500 shrink-0" /> {assessmentType === 'completa' ? 'Reto Final de Certificación IA' : 'Prueba de Conocimiento IA'}
           </h2>
           <p className="text-gray-400 text-sm mt-1">Generado dinámicamente con los recursos del módulo.</p>
         </div>
         {submitted && (
-          <div className={`px-4 py-2 rounded-xl font-bold border ${calculatePercentage() >= 70 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
+          <div className={`px-4 py-2 rounded-xl font-bold border ${calculatePercentage() >= 70 ? 'bg-surface-100 text-surface-900 border-surface-300 dark:bg-surface-800 dark:text-surface-100 dark:border-surface-600' : 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:border-brand-500/30'}`}>
             Nota: {score} / {questions.length} ({calculatePercentage()}%)
           </div>
         )}
@@ -93,7 +95,7 @@ const AIAssessmentForm = ({
         {questions.map((q, index) => (
           <div key={q.id} className="bg-[#0f172a] rounded-2xl p-6 border border-gray-800 relative overflow-hidden">
             {submitted && (
-              <div className={`absolute left-0 top-0 bottom-0 w-1 ${answers[q.id] === q.correctAnswer ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+              <div className={`absolute left-0 top-0 bottom-0 w-1 ${answers[q.id] === q.correctAnswer ? 'bg-surface-100' : 'bg-brand-600'}`}></div>
             )}
             
             <div className="flex gap-4 mb-4">
@@ -120,7 +122,7 @@ const AIAssessmentForm = ({
                     : "bg-[#1e2333] border-gray-700 text-gray-300 hover:border-brand-500/50 hover:bg-[#252b3e] cursor-pointer";
                 } else {
                   if (isCorrect) {
-                    optionClasses += "bg-emerald-500/20 border-emerald-500 text-emerald-300";
+                    optionClasses += "bg-surface-500/15 border-surface-400 text-surface-100";
                   } else if (isSelected && !isCorrect) {
                     optionClasses += "bg-red-500/20 border-red-500 text-red-300";
                   } else {

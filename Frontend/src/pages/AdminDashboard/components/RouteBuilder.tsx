@@ -7,6 +7,8 @@ import { getResources } from '../../../api/resource.api';
 import { createRoute, updateRoute } from '../../../api/route.api';
 import { uploadCoverImage } from '../../../api/upload.api';
 import { getApiErrorMessage } from '../../../api/errors';
+import { Icon } from '@/components/ui';
+import ModuleResourcePicker from './ModuleResourcePicker';
 import type { LearningRoute, Resource, RouteModuleInput } from '../../../types';
 
 const routeSchema = z.object({
@@ -106,12 +108,13 @@ const RouteBuilder = ({ initialData, onCancel, onSaveSuccess }: RouteBuilderProp
   );
 
   const predefinedCategories = [
-    "Ingeniería de Software",
-    "Datos e Información",
-    "Infraestructura y Redes",
-    "Gestión y Proyectos de TI",
-    "Sistemas y Arquitectura",
-    "Fundamentos y Lógica"
+    'Fundamentos y Lógica de Programación',
+    'Estructuras de Datos y POO',
+    'Desarrollo Web Frontend',
+    'Desarrollo Backend y APIs',
+    'Bases de Datos y Persistencia',
+    'Arquitectura y Calidad de Software',
+    'DevOps, Infraestructura y Redes',
   ];
 
   // El formulario entrega `estimatedTime` como string (viene de un <input>), pero
@@ -276,13 +279,13 @@ const { register, handleSubmit, watch, setValue, formState: { errors } } = useFo
                 />
               </label>
             </div>
-            {errors.category && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.category.message}</p>}
+            {errors.category && <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.category.message}</p>}
           </div>
 
           <div className="bg-white dark:bg-surface-900 p-6 md:p-8 rounded-2xl border border-surface-200 dark:border-surface-800 shadow-sm relative overflow-hidden">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500"></div>
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-surface-900 dark:bg-surface-100"></div>
             <h2 className="text-lg font-display font-semibold text-surface-900 dark:text-white mb-6 flex items-center gap-2">
-              <span className="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold">2</span>
+              <span className="bg-surface-900 text-surface-50 dark:bg-surface-100 dark:text-surface-900 w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold">2</span>
               Materia / Detalles de la Ruta
             </h2>
 
@@ -295,7 +298,7 @@ const { register, handleSubmit, watch, setValue, formState: { errors } } = useFo
                   className={`w-full bg-surface-50 dark:bg-surface-800 border ${errors.title ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} rounded-xl px-4 py-2.5 text-surface-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm`}
                   {...register('title')}
                 />
-                {errors.title && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.title.message}</p>}
+                {errors.title && <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.title.message}</p>}
               </div>
 
               {/* Portada de la ruta (POST /upload/subir-portada). El campo del
@@ -334,7 +337,7 @@ const { register, handleSubmit, watch, setValue, formState: { errors } } = useFo
                     className={`w-full bg-surface-50 dark:bg-surface-800 border ${errors.estimatedTime ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} rounded-xl px-4 py-2.5 text-surface-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm`}
                     {...register('estimatedTime')}
                   />
-                  {errors.estimatedTime && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.estimatedTime.message}</p>}
+                  {errors.estimatedTime && <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.estimatedTime.message}</p>}
                 </div>
                 <div>
                   <label className="text-sm font-semibold text-surface-600 dark:text-surface-400 block mb-2">Nivel de Dificultad</label>
@@ -356,19 +359,20 @@ const { register, handleSubmit, watch, setValue, formState: { errors } } = useFo
                   className={`w-full bg-surface-50 dark:bg-surface-800 border ${errors.description ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} rounded-xl px-4 py-2.5 text-surface-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all h-24 resize-none text-sm`}
                   {...register('description')}
                 />
-                {errors.description && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.description.message}</p>}
+                {errors.description && <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.description.message}</p>}
               </div>
 
-              <div className="bg-emerald-50 dark:bg-emerald-950/30 p-5 rounded-xl border border-emerald-200/60 dark:border-emerald-800/40">
-                <label className="flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400 mb-2">
-                  <span className="text-xl">🤖</span> Directrices para la IA (System Prompt)
+              <div className="bg-surface-100 dark:bg-surface-800 p-5 rounded-xl border border-surface-300 dark:border-surface-600">
+                <label className="flex items-center gap-2 text-sm font-semibold text-surface-800 dark:text-surface-200 mb-2">
+                  <Icon name="bot" className="h-5 w-5 text-brand-600 dark:text-brand-400" />
+                  Directrices para la IA (System Prompt)
                 </label>
                 <p className="text-xs text-surface-500 dark:text-surface-400 mb-3">
                   Define cómo debe comportarse el chatbot de Gemini al evaluar esta ruta específica.
                 </p>
                 <textarea 
                   placeholder="Ej: Actúa como un profesor estricto de la EPN..."
-                  className="w-full bg-white dark:bg-surface-800 border border-emerald-200/60 dark:border-emerald-800/40 rounded-xl px-4 py-2.5 text-surface-900 dark:text-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all h-28 resize-none text-sm"
+                  className="w-full bg-white dark:bg-surface-800 border border-surface-300 dark:border-surface-600 rounded-xl px-4 py-2.5 text-surface-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all h-28 resize-none text-sm"
                   {...register('evaluationRules')}
                 />
               </div>
@@ -376,12 +380,12 @@ const { register, handleSubmit, watch, setValue, formState: { errors } } = useFo
           </div>
 
           <div className="bg-white dark:bg-surface-900 p-6 md:p-8 rounded-2xl border border-surface-200 dark:border-surface-800 shadow-sm relative overflow-hidden">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-accent-500"></div>
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-surface-400 dark:bg-surface-600"></div>
             
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
               <div>
                 <h2 className="text-lg font-display font-semibold text-surface-900 dark:text-white flex items-center gap-2">
-                  <span className="bg-accent-50 dark:bg-accent-950/60 text-accent-600 dark:text-accent-400 w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold">3</span>
+                  <span className="bg-surface-200 dark:bg-surface-700 text-surface-700 dark:text-surface-300 w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold">3</span>
                   Cursos de la Ruta (Submódulos)
                 </h2>
                 <p className="text-sm text-surface-500 dark:text-surface-400 mt-1 sm:ml-10">Crea los submódulos y asígnales los recursos existentes.</p>
@@ -389,7 +393,7 @@ const { register, handleSubmit, watch, setValue, formState: { errors } } = useFo
               <button 
                 type="button" 
                 onClick={addModule}
-                className="px-4 py-2 bg-accent-50 dark:bg-accent-950/60 text-accent-700 dark:text-accent-400 hover:bg-accent-100 dark:hover:bg-accent-900/40 border border-accent-200/60 dark:border-accent-800/60 rounded-xl text-sm font-semibold transition-colors"
+                className="px-4 py-2 bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-700 border border-surface-300 dark:border-surface-600 rounded-xl text-sm font-semibold transition-colors"
               >
                 + Añadir Curso
               </button>
@@ -415,7 +419,7 @@ const { register, handleSubmit, watch, setValue, formState: { errors } } = useFo
                       placeholder="Nombre del Curso (Ej: Conceptos básicos de Redes)"
                       value={mod.title}
                       onChange={(e) => updateModule(index, 'title', e.target.value)}
-                      className="w-full bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg px-4 py-2.5 text-surface-900 dark:text-white focus:outline-none focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 text-sm font-semibold"
+                      className="w-full bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg px-4 py-2.5 text-surface-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 text-sm font-semibold"
                       required
                     />
                     
@@ -423,37 +427,24 @@ const { register, handleSubmit, watch, setValue, formState: { errors } } = useFo
                       placeholder="Breve descripción del curso..."
                       value={mod.description}
                       onChange={(e) => updateModule(index, 'description', e.target.value)}
-                      className="w-full bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg px-4 py-2 text-surface-900 dark:text-white focus:outline-none focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 text-sm h-12 resize-none"
+                      className="w-full bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg px-4 py-2 text-surface-900 dark:text-white focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 text-sm h-12 resize-none"
                     />
                     
                     <div className="mt-4 border-t border-surface-200 dark:border-surface-700 pt-4">
-                      <label className="text-xs font-semibold text-surface-500 dark:text-surface-400 block mb-3 uppercase tracking-wider">
+                      <p className="text-xs font-semibold text-surface-500 dark:text-surface-400 block mb-3 uppercase tracking-wider">
                         Catálogo de Recursos (Selecciona para añadir)
-                      </label>
+                      </p>
                       
                       {loadingResources ? (
                         <div className="text-sm text-surface-500 dark:text-surface-400 italic">Cargando recursos...</div>
-                      ) : availableResources.length === 0 ? (
-                        <div className="bg-accent-50 dark:bg-accent-950/60 text-accent-700 dark:text-accent-400 p-3 rounded-lg text-sm border border-accent-200/60 dark:border-accent-800/60">
-                          No hay recursos disponibles. Sube recursos primero.
-                        </div>
                       ) : (
-                        <div className="max-h-40 overflow-y-auto bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-lg p-2 space-y-1 custom-scrollbar">
-                          {availableResources.map((res) => (
-                            <label key={res.id} className="flex items-center gap-3 p-2 hover:bg-surface-100 dark:hover:bg-surface-800/50 rounded-md cursor-pointer transition-colors">
-                              <input 
-                                type="checkbox"
-                                checked={(mod.resourceIds ?? []).includes(res.id)}
-                                onChange={() => toggleResource(index, res.id)}
-                                className="w-4 h-4 text-accent-500 bg-white dark:bg-surface-900 border-surface-300 dark:border-surface-600 focus:ring-accent-500 rounded"
-                              />
-                              <div className="flex flex-col">
-                                <span className="text-sm font-medium text-surface-700 dark:text-surface-300 line-clamp-1">{res.title}</span>
-                                <span className="text-[10px] text-surface-500 dark:text-surface-400 uppercase">{res.type}</span>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
+                        <ModuleResourcePicker
+                          availableResources={availableResources}
+                          selectedResourceIds={mod.resourceIds ?? []}
+                          onToggleResource={(resourceId) => toggleResource(index, resourceId)}
+                          moduleTitle={mod.title}
+                          routeCategory={selectedCategory}
+                        />
                       )}
                     </div>
                   </div>
@@ -462,7 +453,7 @@ const { register, handleSubmit, watch, setValue, formState: { errors } } = useFo
                     type="button" 
                     aria-label="Eliminar módulo"
                     onClick={() => removeModule(index)}
-                    className="flex-shrink-0 self-start text-surface-500 hover:text-rose-500 bg-white dark:bg-surface-900 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2 rounded-lg transition-colors border border-surface-200 dark:border-surface-700 hover:border-rose-500/30"
+                    className="flex-shrink-0 self-start text-surface-500 hover:text-brand-500 bg-white dark:bg-surface-900 hover:bg-brand-50 dark:hover:bg-brand-950/40 p-2 rounded-lg transition-colors border border-surface-200 dark:border-surface-700 hover:border-brand-500/30"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                   </button>

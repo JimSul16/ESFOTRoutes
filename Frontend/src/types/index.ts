@@ -12,6 +12,12 @@ export interface User {
   name: string;
   email: string;
   roles: string[];
+  /** Carrera del estudiante (RR-003). `null` si no está completada. */
+  career?: string | null;
+  /** Semestre cursando 1–10 (RR-003). */
+  semester?: number | null;
+  /** ID único EPN de 9 dígitos (RR-005). */
+  uniqueId?: string | null;
   /** Iniciales precalculadas por el backend (columna `User.initials`). */
   initials?: string;
   /** Perfil de aprendizaje serializado como JSON. */
@@ -36,17 +42,72 @@ export interface UserDashboard extends User {
   primaryRole: 'ADMIN' | 'STUDENT';
 }
 
+// ─── Progreso personal (RR-004) ───────────────────────────────────────────────
+
+export interface MyProgressActivity {
+  kind: 'MODULE' | 'SESSION';
+  label: string;
+  score: number | null;
+  at: string;
+}
+
+export interface MyProgressRoute {
+  id: string;
+  title: string;
+  category?: string | null;
+  imageUrl?: string | null;
+  estimatedTime?: string | null;
+  progress: number;
+  enrolledAt: string;
+}
+
+export interface MyProgress {
+  points: number;
+  level: number;
+  streak: number;
+  xp?: number;
+  progressLevel?: number;
+  career?: string | null;
+  semester?: number | null;
+  modulesCompleted: number;
+  modulesPassed: number;
+  routesEnrolled: number;
+  averageProgress: number;
+  routes: MyProgressRoute[];
+  recentActivities: MyProgressActivity[];
+}
+
 // ─── Auth (requests / responses) ──────────────────────────────────────────────
+
+/** Carreras oficiales (ESFOT / EPN). */
+export const CAREERS = [
+  'Desarrollo de Software',
+  'Redes y Telecomunicaciones',
+  'Electromecanica',
+] as const;
+
+export type CareerName = (typeof CAREERS)[number];
+
+export const MAX_SEMESTER = 5;
+export const SEMESTERS = [1, 2, 3, 4, 5] as const;
 
 export interface LoginCredentials {
   email: string;
   password: string;
+  /** OTP de 6 dígitos; solo necesario en el segundo paso del login con 2FA. */
+  otp?: string;
 }
 
 export interface RegisterData {
   name: string;
   email: string;
   password: string;
+  /** Obligatorio (RR-003): mínimo 3 caracteres. */
+  career: string;
+  /** Obligatorio (RR-003): entero 1–10. */
+  semester: number;
+  /** Obligatorio (RR-005): exactamente 9 dígitos. */
+  uniqueId: string;
 }
 
 /** Login exitoso (HTTP 200). */
@@ -56,7 +117,17 @@ export interface LoginSuccessResponse {
   user: User;
 }
 
-export type LoginResponse = LoginSuccessResponse;
+/**
+ * Login que requiere segundo factor (HTTP 206).
+ * El backend no devuelve token todavía: hay que reenviar `credentials` con `otp`.
+ */
+export interface LoginOtpRequiredResponse {
+  message: string;
+  token?: undefined;
+  user?: undefined;
+}
+
+export type LoginResponse = LoginSuccessResponse | LoginOtpRequiredResponse;
 
 /** Respuesta genérica de endpoints que solo devuelven un mensaje. */
 export interface AuthMessageResponse {
@@ -67,6 +138,10 @@ export interface UpdateProfilePayload {
   name?: string;
   profilePicture?: string | null;
   learningProfile?: string | Record<string, unknown>;
+  /** Obligatorio (RR-003): mínimo 3 caracteres. */
+  career: string;
+  /** Obligatorio (RR-003): entero 1–10. */
+  semester: number;
 }
 
 export interface UpdateProfileResponse {
@@ -157,6 +232,7 @@ export type AssessmentType = 'completa' | 'teoria' | 'practica';
 /** POST /routes/:id/enroll */
 export interface EnrollResponse {
   message: string;
+  enrolled?: boolean;
   enrollment?: Enrollment;
 }
 
@@ -175,6 +251,9 @@ export interface CompleteModulePayload {
 export interface CompleteModuleResponse {
   message: string;
   progress: number;
+  pointsGained?: number;
+  newTotalProgress?: number;
+  newProgressLevel?: number;
   xpGained: number;
   newTotalXp: number;
   newLevel: number;

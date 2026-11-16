@@ -1,5 +1,6 @@
 import { useId } from 'react';
-import { Badge, Button, Spinner, type BadgeVariant } from '@/components/ui';
+import { Badge, Button, Icon, Spinner } from '@/components/ui';
+import { getModuleToneMeta } from '@/utils/uiMaps';
 import ResourceCard from './ResourceCard';
 import type { Module } from '../../../../types';
 import type { AssessmentType } from '../../../../types';
@@ -15,101 +16,9 @@ export interface ModuleItemProps {
   loadingType?: AssessmentType | null;
   /** Abre el tutor IA con el contexto de este módulo (GraphRAG). */
   onAskTutor?: (moduleId: string, moduleTitle: string) => void;
+  /** Abre el modal con el historial de evaluaciones del módulo (RR-008). */
+  onViewAssessments?: (moduleId: string, moduleTitle: string) => void;
 }
-
-/**
- * Tipos de módulo que puede producir el grafo curricular.
- *
- * `graphAlgorithm.js` arma los títulos de la ruta adaptativa:
- *   "Módulo 2: Nivelación y Refuerzo Focalizado"
- *   "Módulo 1: Validación y Maestría Práctica de ..."
- *   "Módulo 3: Dominio Práctico de ..."
- *   "Módulo 1: Convalidación y Repaso de Conceptos Dominados"
- * La tabla `Module` no guarda ningún campo de tipo, así que la única señal
- * disponible en el frontend es el título.
- */
-type ModuleTone = 'reinforcement' | 'mastery' | 'practice' | 'standard';
-
-interface ToneConfig {
-  /** Variante del `Badge` con la etiqueta del tipo de módulo. */
-  badge: BadgeVariant;
-  /** Color del rail lateral: identifica el módulo de un vistazo. */
-  rail: string;
-  /** Estilo del contador numérico. */
-  counter: string;
-  icon: string;
-  label: string;
-}
-
-/**
- * Paleta del proyecto: `brand` (rojo EPN) para la ruta troncal, `accent`
- * (ámbar) para los módulos de refuerzo, `primary` (azul) para la práctica
- * consolidada y `emerald` para los módulos acreditados.
- */
-const TONES: Record<ModuleTone, ToneConfig> = {
-  reinforcement: {
-    badge: 'accent',
-    rail: 'bg-accent-500',
-    counter:
-      'bg-accent-100 text-accent-700 border-accent-200 dark:bg-accent-500/10 dark:text-accent-300 dark:border-accent-500/25',
-    icon: '⚡',
-    label: 'Refuerzo sugerido',
-  },
-  mastery: {
-    badge: 'success',
-    rail: 'bg-emerald-500',
-    counter:
-      'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/25',
-    icon: '⭐',
-    label: 'Dominio avanzado acreditado',
-  },
-  practice: {
-    badge: 'primary',
-    rail: 'bg-primary-500',
-    counter:
-      'bg-primary-100 text-primary-700 border-primary-200 dark:bg-primary-900/40 dark:text-primary-300 dark:border-primary-500/25',
-    icon: '✨',
-    label: 'Práctica consolidada',
-  },
-  standard: {
-    badge: 'brand',
-    rail: 'bg-brand-500',
-    counter:
-      'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-500/10 dark:text-brand-300 dark:border-brand-500/25',
-    icon: '📘',
-    label: 'Módulo troncal',
-  },
-};
-
-/** Normaliza el título (sin acentos y en minúsculas) para poder compararlo. */
-const normalizar = (texto: string) =>
-  texto
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-/**
- * Clasifica el módulo a partir de su título.
- *
- * La clasificación es EXCLUYENTE a propósito: antes "Dominio Práctico de ..."
- * pintaba a la vez "Dominio Avanzado Acreditado" y "Consolidación Práctica",
- * dos etiquetas incompatibles en el mismo encabezado. Ahora gana la primera
- * regla que encaja, en orden de especificidad.
- */
-const clasificarModulo = (titulo?: string | null): ModuleTone => {
-  const t = normalizar(titulo ?? '');
-  if (!t) return 'standard';
-  if (/refuerzo|nivelacion|⚡/.test(t)) return 'reinforcement';
-  if (/maestria|acreditad|validacion|⭐/.test(t)) return 'mastery';
-  if (/consolidacion|practica|practico|dominio|✨/.test(t)) return 'practice';
-  return 'standard';
-};
-
-const CheckIcon = () => (
-  <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-  </svg>
-);
 
 const ModuleItem = ({
   module: mod,
@@ -121,16 +30,17 @@ const ModuleItem = ({
   isGeneratingAssessment,
   loadingType,
   onAskTutor,
+  onViewAssessments,
 }: ModuleItemProps) => {
   const panelId = useId();
-  const tone = TONES[clasificarModulo(mod.title)];
+  const tone = getModuleToneMeta(mod.title);
   const resources = mod.resources ?? [];
 
   return (
     <article
       className={`group relative overflow-hidden rounded-2xl border bg-white shadow-card transition-all duration-300 hover:shadow-soft dark:bg-surface-900 ${
         mod.isPassed
-          ? 'border-emerald-200/90 dark:border-emerald-500/25'
+          ? 'border-surface-500 dark:border-surface-400'
           : 'border-surface-200/80 dark:border-surface-800'
       }`}
     >
@@ -148,11 +58,11 @@ const ModuleItem = ({
         <span
           className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-sm font-bold transition-transform duration-300 group-hover:scale-105 ${
             mod.isPassed
-              ? 'bg-emerald-100 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/25'
+              ? 'bg-surface-900 text-surface-50 border-surface-900 dark:bg-surface-100 dark:text-surface-900 dark:border-surface-100'
               : tone.counter
           }`}
         >
-          {mod.isPassed ? <CheckIcon /> : index + 1}
+          {mod.isPassed ? <Icon name="check" className="h-4 w-4" /> : index + 1}
         </span>
 
         <div className="min-w-0 flex-1">
@@ -163,14 +73,14 @@ const ModuleItem = ({
 
           {/* Etiquetas: tipo pedagógico + estado de avance */}
           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <Badge variant={tone.badge} className="gap-1.5 font-semibold">
-              <span aria-hidden="true">{tone.icon}</span>
+            <Badge variant={tone.variant} className="gap-1.5 font-semibold">
+              <Icon name={tone.icon} className="h-3.5 w-3.5" />
               {tone.label}
             </Badge>
 
             {mod.isPassed && (
               <Badge variant="success" className="gap-1.5 font-semibold">
-                <CheckIcon />
+                <Icon name="check" className="h-4 w-4" />
                 Completado{mod.score != null ? ` · ${mod.score}%` : ''}
               </Badge>
             )}
@@ -193,9 +103,7 @@ const ModuleItem = ({
               : 'border-surface-200 text-surface-400 group-hover:border-surface-300 group-hover:text-surface-600 dark:border-surface-800 dark:group-hover:border-surface-700 dark:group-hover:text-surface-300'
           }`}
         >
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+          <Icon name="chevronDown" className="h-4 w-4" />
         </span>
       </button>
 
@@ -228,17 +136,29 @@ const ModuleItem = ({
           </div>
 
           <div className="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-surface-200 pt-6 dark:border-surface-700">
+            {onViewAssessments && (
+              <Button
+                variant="ghost"
+                onClick={() => onViewAssessments(mod.id, mod.title)}
+                className="gap-2"
+              >
+                <Icon name="listChecks" className="h-4 w-4" />
+                Historial de evaluaciones
+              </Button>
+            )}
             {onAskTutor && (
               <Button
                 variant="secondary"
                 onClick={() => onAskTutor(mod.id, mod.title)}
                 disabled={isGeneratingAssessment}
+                className="gap-2"
               >
-                💬 Consultar al tutor IA
+                <Icon name="bot" className="h-4 w-4" />
+                Consultar al tutor IA
               </Button>
             )}
             <Button
-              variant="secondary"
+              variant="accent"
               onClick={() => onGenerateAssessment(mod.id, 'teoria')}
               disabled={isGeneratingAssessment}
             >

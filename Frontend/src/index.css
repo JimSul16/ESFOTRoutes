@@ -2,19 +2,22 @@
 @config "../tailwind.config.js";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Fuente única de verdad del sistema de diseño.
+ * `tailwind.config.js` ya no declara colores, tipografías ni sombras:
+ * todo token nuevo debe agregarse aquí para evitar que ambos archivos
+ * se desincronicen (era la causa de clases como `bg-surface-850`, que
+ * se usaban en la UI pero nunca se generaban).
+ *
+ * Paleta corporativa: SOLO dos familias cromáticas.
+ *   - `brand` / `primary`: rojo corporativo (familia idéntica; `primary`
+ *     es el alias semántico de acción y se verifica en `palette.test.ts`).
+ *   - `surface`: escala neutra (blanco a negro grafito) para textos, fondos
+ *     e iconos. El acento neutro se expresa con `surface-*`, igual que hace
+ *     `Button` con su variante `accent`: no existe rampa `accent` aparte.
+ */
 @theme {
-  --color-primary-50: #f0f7ff;
-  --color-primary-100: #e0effe;
-  --color-primary-200: #bae0fd;
-  --color-primary-300: #7cc8fb;
-  --color-primary-400: #36abf6;
-  --color-primary-500: #0c8de7;
-  --color-primary-600: #006fc5;
-  --color-primary-700: #015aa0;
-  --color-primary-800: #064c84;
-  --color-primary-900: #0b416d;
-  --color-primary-950: #07294a;
-
+  /* ---------- Color: marca (rojo EPN) ---------- */
   --color-brand-50: #fef2f2;
   --color-brand-100: #fee2e2;
   --color-brand-200: #fecaca;
@@ -27,18 +30,22 @@
   --color-brand-900: #7f1d1d;
   --color-brand-950: #450a0a;
 
-  --color-accent-50: #fffbeb;
-  --color-accent-100: #fef3c7;
-  --color-accent-200: #fde68a;
-  --color-accent-300: #fcd34d;
-  --color-accent-400: #fbbf24;
-  --color-accent-500: #f59e0b;
-  --color-accent-600: #d97706;
-  --color-accent-700: #b45309;
-  --color-accent-800: #92400e;
-  --color-accent-900: #78350f;
-  --color-accent-950: #451a03;
+  /* ---------- Color: primario (alias semántico del rojo corporativo) ----------
+   * Mismos valores que `brand`: es el token de acción/énfasis que consumen
+   * botones, barras y estados. Igualdad verificada por `palette.test.ts`. */
+  --color-primary-50: #fef2f2;
+  --color-primary-100: #fee2e2;
+  --color-primary-200: #fecaca;
+  --color-primary-300: #fca5a5;
+  --color-primary-400: #f87171;
+  --color-primary-500: #ef4444;
+  --color-primary-600: #dc2626;
+  --color-primary-700: #b91c1c;
+  --color-primary-800: #991b1b;
+  --color-primary-900: #7f1d1d;
+  --color-primary-950: #450a0a;
 
+  /* ---------- Color: superficies (neutro cálido) ---------- */
   --color-surface-50: #fafaf9;
   --color-surface-100: #f5f5f4;
   --color-surface-200: #e7e5e4;
@@ -48,41 +55,93 @@
   --color-surface-600: #57534e;
   --color-surface-700: #44403c;
   --color-surface-800: #292524;
+  /* Paso intermedio real entre 800 y 900 (antes no existía). */
+  --color-surface-850: #231f1e;
   --color-surface-900: #1c1917;
   --color-surface-950: #0c0a09;
 
+  /* Anillo de foco unificado para todos los interactivos. */
+  --color-focus: var(--color-brand-500);
+
+  /* ---------- Tipografía ---------- */
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-display: 'Sora', 'Inter', system-ui, sans-serif;
 
-  --shadow-soft: 0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04);
-  --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
-  --shadow-glow: 0 0 25px -5px rgba(220, 38, 38, 0.25);
+  /* Texto auxiliar por debajo de `xs` (11px) con interlineado legible. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  /* ---------- Radios semánticos ---------- */
+  --radius-control: 0.75rem; /* 12px: botones, inputs, badges grandes */
+  --radius-card: 1rem; /* 16px: tarjetas y paneles internos */
+  --radius-panel: 1.5rem; /* 24px: modales, heroes y contenedores raíz */
+
+  /* ---------- Elevación ---------- */
+  --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.05);
+  --shadow-soft: 0 2px 15px -3px rgb(0 0 0 / 0.07), 0 10px 20px -2px rgb(0 0 0 / 0.04);
+  --shadow-float: 0 24px 48px -12px rgb(12 10 9 / 0.25), 0 8px 16px -8px rgb(12 10 9 / 0.12);
 }
 
 @layer base {
   html {
     scroll-behavior: smooth;
+    /* Barra de scroll y controles nativos coherentes con el tema. */
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
   }
 
   body {
     background-color: var(--color-surface-50);
     color: var(--color-surface-900);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   .dark body {
-    background-color: var(--color-surface-900);
+    background-color: var(--color-surface-950);
     color: var(--color-surface-100);
   }
 
+  /* Equilibrio tipográfico: evita títulos huérfanos y párrafos viudos. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
   ::selection {
-    background-color: var(--color-primary-200);
-    color: var(--color-primary-900);
+    background-color: var(--color-surface-300);
+    color: var(--color-surface-950);
   }
 
   .dark ::selection {
-    background-color: var(--color-primary-800);
-    color: var(--color-primary-100);
+    background-color: var(--color-surface-700);
+    color: var(--color-surface-50);
+  }
+
+  /* Respeta la preferencia del sistema de reducir movimiento. */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
@@ -105,6 +164,34 @@
 
   .zoom-in-95 {
     animation: zoomIn95 0.2s ease-out;
+  }
+
+  /* Scrollbar discreto para paneles con overflow (editor de código, tabs). */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-surface-400) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--color-surface-400);
+    border-radius: 9999px;
+  }
+
+  .dark .custom-scrollbar {
+    scrollbar-color: var(--color-surface-600) transparent;
+  }
+
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--color-surface-600);
   }
 }
 

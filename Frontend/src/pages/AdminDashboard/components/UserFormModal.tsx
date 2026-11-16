@@ -11,7 +11,7 @@ import {
   isAllowedEmailDomain,
   normalizeEmail,
 } from '../../../utils/email';
-import type { User } from '../../../types';
+import { type User, CAREERS, SEMESTERS } from '../../../types';
 
 export interface UserFormModalProps {
   isOpen: boolean;
@@ -37,7 +37,10 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
     password: userToEdit 
       ? z.string().optional() 
       : z.string().min(8, "Mínimo 8 caracteres"),
-    roleName: z.enum(["STUDENT", "ADMIN"])
+    roleName: z.enum(["STUDENT", "ADMIN"]),
+    career: z.string().min(3, "La carrera es obligatoria"),
+    semester: z.number().int().min(1, "Semestre entre 1 y 5").max(5, "Semestre entre 1 y 5"),
+    uniqueId: z.string().regex(/^\d{9}$/, "El ID único EPN debe tener exactamente 9 dígitos"),
   });
 
   type UserFormValues = z.infer<typeof userSchema>;
@@ -48,7 +51,10 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
       name: '',
       email: '',
       password: '',
-      roleName: 'STUDENT'
+      roleName: 'STUDENT',
+      career: CAREERS[0],
+      semester: 1,
+      uniqueId: '',
     }
   });
 
@@ -60,6 +66,9 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
         password: '',
         // `roles` es string[]; solo 'STUDENT' y 'ADMIN' son válidos para el enum.
         roleName: userToEdit.roles[0] === 'ADMIN' ? 'ADMIN' : 'STUDENT',
+        career: userToEdit.career || CAREERS[0],
+        semester: userToEdit.semester || 1,
+        uniqueId: userToEdit.uniqueId || '',
       });
     } else {
       reset({
@@ -67,6 +76,9 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
         email: '',
         password: '',
         roleName: 'STUDENT',
+        career: CAREERS[0],
+        semester: 1,
+        uniqueId: '',
       });
     }
   }, [userToEdit, reset]);
@@ -77,6 +89,7 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
     // mayúsculas, así que `Ana@Gmail.com` y `ana@gmail.com` serían dos
     // usuarios distintos y el segundo no podría iniciar sesión.
     const email = normalizeEmail(dataForm.email);
+    const uniqueId = dataForm.uniqueId.trim();
 
     try {
       if (userToEdit) {
@@ -85,6 +98,9 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
           email,
           password: dataForm.password,
           roleName: dataForm.roleName,
+          career: dataForm.career,
+          semester: dataForm.semester,
+          uniqueId,
         });
         toast.success(res.message);
       } else {
@@ -100,13 +116,23 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
           email,
           password: dataForm.password,
           roleName: dataForm.roleName,
+          career: dataForm.career,
+          semester: dataForm.semester,
+          uniqueId,
         });
         toast.success(res.message);
       }
       onClose();
     } catch (error: unknown) {
-      // Antes el fallo solo llegaba a la consola: el modal se cerraba igual y
-      // el admin veía un "éxito" mudo aunque el usuario no se hubiera creado.
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'response' in error &&
+        (error as { response?: { status?: number } }).response?.status === 409
+      ) {
+        toast.error('Este ID único ya está registrado.');
+        return;
+      }
       toast.error(getApiErrorMessage(error, 'No se pudo guardar el usuario.'));
     }
   };
@@ -128,7 +154,7 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
               className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.name ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-sm`}
               {...register("name")}
             />
-            {errors.name && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.name.message}</p>}
+            {errors.name && <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.name.message}</p>}
           </div>
           
           <div>
@@ -141,12 +167,55 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
               {...register("email")}
             />
             {errors.email ? (
-              <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.email.message}</p>
+              <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.email.message}</p>
             ) : (
               <p className="text-surface-400 dark:text-surface-500 text-xs mt-1.5">
                 Dominios permitidos: {ALLOWED_EMAIL_DOMAINS_TEXT}
               </p>
             )}
+          </div>
+
+          <div>
+            <label htmlFor="user-uniqueId" className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">ID Único EPN (9 dígitos)</label>
+            <input
+              id="user-uniqueId"
+              type="text"
+              maxLength={9}
+              placeholder="123456789"
+              className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.uniqueId ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-sm`}
+              {...register("uniqueId")}
+            />
+            {errors.uniqueId && <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.uniqueId.message}</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="user-career" className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Carrera</label>
+              <select
+                id="user-career"
+                className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.career ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all appearance-none text-sm`}
+                {...register("career")}
+              >
+                {CAREERS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              {errors.career && <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.career.message}</p>}
+            </div>
+
+            <div>
+              <label htmlFor="user-semester" className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Semestre</label>
+              <select
+                id="user-semester"
+                className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.semester ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all appearance-none text-sm`}
+                {...register("semester", { valueAsNumber: true })}
+              >
+                {SEMESTERS.map((s) => (
+                  <option key={s} value={s}>{s}° Semestre</option>
+                ))}
+              </select>
+              {errors.semester && <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.semester.message}</p>}
+            </div>
           </div>
           
             <>
@@ -158,7 +227,7 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
                   className={`w-full rounded-xl bg-surface-50 dark:bg-surface-800 border ${errors.password ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} text-surface-900 dark:text-white p-2.5 outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-sm`}
                   {...register("password")}
                 />
-                {errors.password && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.password.message}</p>}
+                {errors.password && <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.password.message}</p>}
               </div>
               
               <div>
@@ -171,7 +240,7 @@ const UserFormModal = ({ isOpen, onClose, userToEdit }: UserFormModalProps) => {
                   <option value="STUDENT">Estudiante</option>
                   <option value="ADMIN">Administrador</option>
                 </select>
-                {errors.roleName && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.roleName.message}</p>}
+                {errors.roleName && <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.roleName.message}</p>}
               </div>
             </>
           

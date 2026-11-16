@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import { resetPassword } from '../../api/auth.api';
@@ -39,7 +39,17 @@ const fillBoth = () => {
 
 const submit = () => screen.getByRole('button', { name: /actualizar|restablecer/i }).click();
 
-describe('Reset — feedback al usuario', () => {
+const getForm = (): HTMLFormElement => {
+  const el = document.querySelector<HTMLFormElement>('form');
+  if (!el) throw new Error('No se encontró el formulario de reset');
+  return el;
+};
+
+/** Texto visible en el contenedor global de toasts de react-toastify. */
+const toastText = (): string =>
+  document.querySelector('.Toastify__toast-container')?.textContent ?? '';
+
+describe('Reset — feedback dentro de la tarjeta', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -48,7 +58,7 @@ describe('Reset — feedback al usuario', () => {
     vi.useRealTimers();
   });
 
-  it('actualiza la contraseña y confirma con el mensaje del backend', async () => {
+  it('actualiza la contraseña y confirma inline con el mensaje del backend', async () => {
     mockReset.mockResolvedValueOnce({ message: 'Contraseña actualizada con éxito' });
 
     renderReset();
@@ -59,8 +69,11 @@ describe('Reset — feedback al usuario', () => {
       expect(mockReset).toHaveBeenCalledWith('tok-reset', { newPassword: 'NuevaClave123' });
     });
     await waitFor(() => {
-      expect(screen.getByText('Contraseña actualizada con éxito')).toBeTruthy();
+      expect(within(getForm()).getByRole('status').textContent).toContain(
+        'Contraseña actualizada con éxito'
+      );
     });
+    expect(toastText()).not.toContain('Contraseña actualizada con éxito');
   });
 
   it('redirige a /login tras 2.5 segundos', async () => {
@@ -89,7 +102,7 @@ describe('Reset — feedback al usuario', () => {
 
   // Regresión: sin token la página hacía PATCH a `/auth/reset-password/undefined`
   // y el error se perdía en `console.error`.
-  it('avisa y NO llama al backend si falta el token', async () => {
+  it('avisa inline y NO llama al backend si falta el token', async () => {
     render(
       <MemoryRouter initialEntries={['/reset-password']}>
         <ToastContainer />
@@ -103,12 +116,14 @@ describe('Reset — feedback al usuario', () => {
     submit();
 
     await waitFor(() => {
-      expect(screen.getByText('El enlace de recuperación es inválido. Solicita uno nuevo.')).toBeTruthy();
+      expect(within(getForm()).getByRole('alert').textContent).toContain(
+        'El enlace de recuperación es inválido. Solicita uno nuevo.'
+      );
     });
     expect(mockReset).not.toHaveBeenCalled();
   });
 
-  it('muestra el error que devuelve el backend', async () => {
+  it('muestra el error del backend dentro del formulario y no como toast', async () => {
     mockReset.mockRejectedValueOnce({
       response: { status: 400, data: { message: 'El token es inválido o ha expirado' } },
     });
@@ -118,9 +133,32 @@ describe('Reset — feedback al usuario', () => {
     submit();
 
     await waitFor(() => {
-      expect(screen.getByText('El token es inválido o ha expirado')).toBeTruthy();
+      expect(within(getForm()).getByRole('alert').textContent).toContain(
+        'El token es inválido o ha expirado'
+      );
     });
+    expect(toastText()).not.toContain('El token es inválido o ha expirado');
     expect(screen.queryByText('pantalla de login')).toBeNull();
+  });
+
+  it('limpia el aviso inline al editar la contraseña', async () => {
+    mockReset.mockRejectedValueOnce({
+      response: { status: 400, data: { message: 'El token es inválido o ha expirado' } },
+    });
+
+    renderReset();
+    fillBoth();
+    submit();
+
+    await waitFor(() => {
+      expect(within(getForm()).getByRole('alert')).toBeTruthy();
+    });
+
+    fill('newPassword', 'OtraClave123');
+
+    await waitFor(() => {
+      expect(within(getForm()).queryByRole('alert')).toBeNull();
+    });
   });
 
   it('no llama al backend si las contraseñas no coinciden', async () => {

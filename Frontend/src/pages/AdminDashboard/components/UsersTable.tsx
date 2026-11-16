@@ -1,3 +1,15 @@
+import { useMemo, useState } from 'react';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Icon,
+  Input,
+  Skeleton,
+} from '@/components/ui';
+import { getRoleLabel, getRoleTone } from '@/utils/uiMaps';
 import type { User } from '../../../types';
 
 export interface UsersTableProps {
@@ -6,85 +18,313 @@ export interface UsersTableProps {
   /** El id llega como string porque `getUsers()` devuelve `User[]`. */
   onToggleStatus: (id: string) => void;
   onUnlock: (id: string) => void;
+  onViewProgress?: (user: User) => void;
+  loading?: boolean;
+  /** Acción del estado vacío; sin ella solo se muestra el mensaje. */
+  onCreate?: () => void;
 }
 
-const UsersTable = ({ users, onEdit, onToggleStatus, onUnlock }: UsersTableProps) => {
+type RoleFilter = 'all' | 'ADMIN' | 'STUDENT';
+type StatusFilter = 'all' | 'active' | 'inactive';
+
+const UsersTable = ({
+  users,
+  onEdit,
+  onToggleStatus,
+  onUnlock,
+  onViewProgress,
+  loading = false,
+  onCreate,
+}: UsersTableProps) => {
+  const [query, setQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+
+  const filteredUsers = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+
+    return users.filter((user) => {
+      const matchesQuery =
+        !needle ||
+        user.name.toLowerCase().includes(needle) ||
+        user.email.toLowerCase().includes(needle) ||
+        (user.uniqueId && user.uniqueId.toLowerCase().includes(needle));
+
+      const matchesRole = roleFilter === 'all' || user.roles?.includes(roleFilter);
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' ? Boolean(user.isActive) : !user.isActive);
+
+      return matchesQuery && matchesRole && matchesStatus;
+    });
+  }, [users, query, roleFilter, statusFilter]);
+
+  const hasFilters = query.trim() !== '' || roleFilter !== 'all' || statusFilter !== 'all';
+
+  const clearFilters = () => {
+    setQuery('');
+    setRoleFilter('all');
+    setStatusFilter('all');
+  };
+
+  if (loading) {
+    return (
+      <Card padding="none" aria-busy="true" className="overflow-hidden">
+        <span className="sr-only">Cargando usuarios…</span>
+        <div className="border-b border-surface-100 px-5 py-4 dark:border-surface-800">
+          <Skeleton className="h-9 w-full max-w-sm" />
+        </div>
+        <ul className="divide-y divide-surface-100 dark:divide-surface-800">
+          {[0, 1, 2, 3, 4].map((index) => (
+            <li key={index} className="flex items-center gap-4 px-5 py-4">
+              <Skeleton variant="circle" className="h-9 w-9 shrink-0" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="w-1/3" />
+                <Skeleton className="w-1/2 max-w-xs" />
+              </div>
+              <Skeleton className="hidden h-6 w-24 sm:block" />
+            </li>
+          ))}
+        </ul>
+      </Card>
+    );
+  }
+
+  if (users.length === 0) {
+    return (
+      <Card padding="none">
+        <EmptyState
+          icon="users"
+          title="Todavía no hay usuarios registrados"
+          description="Crea la primera cuenta para empezar a gestionar estudiantes y administradores."
+          action={
+            onCreate ? (
+              <Button
+                type="button"
+                onClick={onCreate}
+                iconLeft={<Icon name="plus" className="h-4 w-4" />}
+              >
+                Crear usuario
+              </Button>
+            ) : undefined
+          }
+        />
+      </Card>
+    );
+  }
+
   return (
-    <div className="overflow-x-auto bg-white dark:bg-surface-900 rounded-2xl shadow-sm border border-surface-200 dark:border-surface-800">
-      <table className="w-full text-left border-collapse">
-        <thead>
-          <tr className="bg-surface-50 dark:bg-surface-800 text-surface-600 dark:text-surface-300 border-b border-surface-200 dark:border-surface-800">
-            <th className="p-4 font-semibold text-sm">Nombre</th>
-            <th className="p-4 font-semibold text-sm">Correo</th>
-            <th className="p-4 font-semibold text-sm">Rol</th>
-            <th className="p-4 font-semibold text-sm">Estado</th>
-            <th className="p-4 font-semibold text-sm text-right">Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.length === 0 ? (
-            <tr>
-              <td colSpan={5} className="p-8 text-center text-surface-500 dark:text-surface-400">
-                No se encontraron usuarios o error de conexión con el servidor.
-              </td>
-            </tr>
-          ) : (
-            users.map((user) => (
-              <tr key={user.id} className="border-b border-surface-200/50 dark:border-surface-800/50 hover:bg-surface-100 dark:hover:bg-surface-800/50 transition-colors">
-                <td className="p-4 text-surface-800 dark:text-surface-200 font-medium">{user.name}</td>
-                <td className="p-4 text-surface-500 dark:text-surface-400">{user.email}</td>
-                <td className="p-4 text-surface-600 dark:text-surface-300">{user.roles?.join(', ')}</td>
-                <td className="p-4">
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${user.isActive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-800/60' : 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200/60 dark:border-rose-800/60'}`}>
-                    {user.isActive ? 'Activo' : 'Inactivo'}
-                  </span>
-                </td>
-                <td className="p-4 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => onEdit(user)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/40 hover:bg-brand-100 dark:hover:bg-brand-900/40 border border-brand-200/60 dark:border-brand-800/40 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => onToggleStatus(user.id)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all hover:scale-[1.02] active:scale-[0.98] ${
-                        user.isActive
-                          ? 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 border-rose-200/60 dark:border-rose-800/40'
-                          : 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border-emerald-200/60 dark:border-emerald-800/40'
-                      }`}
-                    >
-                      {user.isActive ? (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
-                          Desactivar
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                          Activar
-                        </>
-                      )}
-                    </button>
-                    {user.isLocked ? (
-                      <button
-                        onClick={() => onUnlock(user.id)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-accent-600 dark:text-accent-400 bg-accent-50 dark:bg-accent-950/40 hover:bg-accent-100 dark:hover:bg-accent-900/40 border border-accent-200/60 dark:border-accent-800/40 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>
-                        Desbloquear
-                      </button>
-                    ) : null}
-                  </div>
-                </td>
+    <Card padding="none" className="overflow-hidden">
+      {/* Filtros */}
+      <div className="flex flex-col gap-3 border-b border-surface-100 p-4 dark:border-surface-800 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-1 flex-col gap-2.5 sm:flex-row sm:items-center">
+          <Input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar por nombre o correo…"
+            aria-label="Buscar usuarios"
+            containerClassName="sm:max-w-xs"
+          />
+
+          <div className="flex items-center gap-2.5">
+            <label className="sr-only" htmlFor="users-role-filter">
+              Filtrar por rol
+            </label>
+            <select
+              id="users-role-filter"
+              value={roleFilter}
+              onChange={(event) => setRoleFilter(event.target.value as RoleFilter)}
+              className="h-[42px] rounded-control border border-surface-200 bg-surface-50 px-3 text-sm text-surface-700 transition-colors focus:border-brand-500 focus:outline-hidden focus:ring-2 focus:ring-focus/25 dark:border-surface-700 dark:bg-surface-800/60 dark:text-surface-200"
+            >
+              <option value="all">Todos los roles</option>
+              <option value="STUDENT">Estudiantes</option>
+              <option value="ADMIN">Administradores</option>
+            </select>
+
+            <label className="sr-only" htmlFor="users-status-filter">
+              Filtrar por estado
+            </label>
+            <select
+              id="users-status-filter"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+              className="h-[42px] rounded-control border border-surface-200 bg-surface-50 px-3 text-sm text-surface-700 transition-colors focus:border-brand-500 focus:outline-hidden focus:ring-2 focus:ring-focus/25 dark:border-surface-700 dark:bg-surface-800/60 dark:text-surface-200"
+            >
+              <option value="all">Todos los estados</option>
+              <option value="active">Activos</option>
+              <option value="inactive">Inactivos</option>
+            </select>
+          </div>
+        </div>
+
+        <p className="shrink-0 text-xs tabular-nums text-surface-500 dark:text-surface-400">
+          {filteredUsers.length} de {users.length} {users.length === 1 ? 'usuario' : 'usuarios'}
+        </p>
+      </div>
+
+      {filteredUsers.length === 0 ? (
+        <EmptyState
+          icon="search"
+          title="Sin resultados"
+          description="Ningún usuario coincide con la búsqueda o los filtros aplicados."
+          action={
+            <Button type="button" variant="secondary" onClick={clearFilters}>
+              Limpiar filtros
+            </Button>
+          }
+        />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[52rem] border-collapse text-left">
+            <thead>
+              <tr className="bg-surface-50 text-2xs uppercase tracking-wider text-surface-500 dark:bg-surface-850 dark:text-surface-400">
+                <th scope="col" className="px-5 py-3 font-semibold">
+                  Usuario
+                </th>
+                <th scope="col" className="px-5 py-3 font-semibold">
+                  ID Único EPN
+                </th>
+                <th scope="col" className="px-5 py-3 font-semibold">
+                  Rol
+                </th>
+                <th scope="col" className="px-5 py-3 font-semibold">
+                  Estado
+                </th>
+                <th scope="col" className="px-5 py-3 text-right font-semibold">
+                  Acciones
+                </th>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+            </thead>
+
+            <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
+              {filteredUsers.map((user) => (
+                <tr
+                  key={user.id}
+                  className="transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/40"
+                >
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <Avatar name={user.name} size="sm" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-surface-900 dark:text-surface-100">
+                          {user.name}
+                        </p>
+                        <p className="truncate text-xs text-surface-500 dark:text-surface-400">
+                          {user.email}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+
+                  <td className="px-5 py-3.5">
+                    <span className="font-mono text-xs text-surface-700 dark:text-surface-300">
+                      {user.uniqueId || '—'}
+                    </span>
+                  </td>
+
+                  <td className="px-5 py-3.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {(user.roles?.length ? user.roles : ['']).map((role, index) => (
+                        <Badge
+                          key={`${user.id}-${role || index}`}
+                          variant={getRoleTone(role)}
+                          size="sm"
+                        >
+                          {getRoleLabel(role) || 'Sin rol'}
+                        </Badge>
+                      ))}
+                    </div>
+                  </td>
+
+                  <td className="px-5 py-3.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge
+                        variant={user.isActive ? 'default' : 'accent'}
+                        size="sm"
+                        dot
+                      >
+                        {user.isActive ? 'Activo' : 'Inactivo'}
+                      </Badge>
+                      {user.isLocked && (
+                        <Badge variant="warning" size="sm">
+                          Bloqueado
+                        </Badge>
+                      )}
+                    </div>
+                  </td>
+
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {onViewProgress && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onViewProgress(user)}
+                          aria-label={`Ver progreso de ${user.name}`}
+                          iconLeft={<Icon name="chartColumn" className="h-3.5 w-3.5" />}
+                        >
+                          Progreso
+                        </Button>
+                      )}
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onEdit(user)}
+                        aria-label={`Editar a ${user.name}`}
+                        iconLeft={<Icon name="pencil" className="h-3.5 w-3.5" />}
+                      >
+                        Editar
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant={user.isActive ? 'danger' : 'secondary'}
+                        size="sm"
+                        onClick={() => onToggleStatus(user.id)}
+                        aria-label={`${user.isActive ? 'Desactivar' : 'Activar'} a ${user.name}`}
+                        iconLeft={
+                          <Icon
+                            name={user.isActive ? 'x' : 'check'}
+                            className="h-3.5 w-3.5"
+                          />
+                        }
+                      >
+                        {user.isActive ? 'Desactivar' : 'Activar'}
+                      </Button>
+
+                      {user.isLocked && (
+                        <Button
+                          type="button"
+                          variant="accent"
+                          size="sm"
+                          onClick={() => onUnlock(user.id)}
+                          aria-label={`Desbloquear a ${user.name}`}
+                          iconLeft={<Icon name="keyRound" className="h-3.5 w-3.5" />}
+                        >
+                          Desbloquear
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {hasFilters && filteredUsers.length > 0 && (
+        <div className="border-t border-surface-100 px-5 py-3 dark:border-surface-800">
+          <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+            Limpiar filtros
+          </Button>
+        </div>
+      )}
+    </Card>
   );
 };
 

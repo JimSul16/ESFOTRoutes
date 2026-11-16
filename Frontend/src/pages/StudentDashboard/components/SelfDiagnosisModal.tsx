@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
+import { Icon } from '@/components/ui';
 import {
   getSubjects,
   getSubjectTopics,
@@ -10,11 +11,11 @@ import { getApiErrorMessage } from '../../../api/errors';
 import type { GraphModule, Subject } from '../../../types';
 
 const LEVEL_LABELS: Record<number, { text: string; color: string }> = {
-  1: { text: '1 - Sin conocimiento', color: 'bg-rose-500/10 text-rose-500 dark:text-rose-400 border-rose-500/30' },
-  2: { text: '2 - Básico / Teórico', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' },
-  3: { text: '3 - Intermedio', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30' },
-  4: { text: '4 - Práctico', color: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30' },
-  5: { text: '5 - Avanzado', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
+  1: { text: '1 - Sin conocimiento', color: 'bg-brand-500/15 text-brand-700 border-brand-500/40 dark:text-brand-300' },
+  2: { text: '2 - Básico / Teórico', color: 'bg-brand-50 text-brand-600 border-brand-200 dark:bg-brand-500/10 dark:text-brand-400 dark:border-brand-500/25' },
+  3: { text: '3 - Intermedio', color: 'bg-surface-100 text-surface-700 border-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:border-surface-700' },
+  4: { text: '4 - Práctico', color: 'bg-transparent text-surface-800 border-surface-400 dark:text-surface-200 dark:border-surface-600' },
+  5: { text: '5 - Avanzado', color: 'bg-surface-900 text-surface-50 border-surface-900 dark:bg-surface-100 dark:text-surface-900 dark:border-surface-100' },
 };
 
 export interface SelfDiagnosisModalProps {
@@ -150,7 +151,7 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
       const result = await generatePersonalizedAdaptiveRoute(selectedSubject.id);
 
       if (result.routeId) {
-        toast.success(`🎉 ¡Ruta adaptativa creada con éxito! Módulos optimizados.`);
+        toast.success('¡Ruta adaptativa creada con éxito! Módulos optimizados.');
         if (onRouteGenerated) {
           onRouteGenerated(result);
         }
@@ -168,12 +169,14 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface-950/70 backdrop-blur-md animate-in fade-in duration-200">
       <div className="bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-surface-900 dark:text-surface-100">
         {/* Header */}
         <div className="p-6 border-b border-surface-200 dark:border-surface-800 flex justify-between items-center bg-surface-50/80 dark:bg-surface-850/80">
           <div className="flex items-center gap-3">
-            <span className="text-3xl">🧭</span>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
+              <Icon name="compass" className="h-5 w-5" />
+            </span>
             <div>
               <h2 className="text-lg sm:text-xl font-display font-bold text-surface-900 dark:text-white flex items-center gap-2">
                 Autodiagnóstico Curricular
@@ -191,7 +194,7 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
             className="text-surface-400 hover:text-surface-600 dark:hover:text-white p-2 rounded-xl hover:bg-surface-200/60 dark:hover:bg-surface-800 transition-colors"
             aria-label="Cerrar modal"
           >
-            ✕
+            <Icon name="x" className="h-4 w-4" />
           </button>
         </div>
 
@@ -202,6 +205,10 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
           </span>
           {loadingSubjects ? (
             <div className="text-xs text-surface-400">Cargando catálogo...</div>
+          ) : subjects.length === 0 ? (
+            <div className="text-xs text-surface-400 italic">
+              No hay materias disponibles en el catálogo curricular.
+            </div>
           ) : (
             subjects.map((s) => {
               const isSelected = selectedSubject?.id === s.id;
@@ -215,7 +222,11 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
                       : 'bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-750'
                   }`}
                 >
-                  <span>{s.id === 'redes' ? '🌐' : '💻'}</span>
+                  {s.id === 'redes' ? (
+                    <Icon name="network" className="h-3.5 w-3.5 shrink-0" />
+                  ) : (
+                    <Icon name="code" className="h-3.5 w-3.5 shrink-0" />
+                  )}
                   <span>{s.name}</span>
                   <span className="text-[10px] opacity-75">({s.topicCount} temas)</span>
                 </button>
@@ -266,11 +277,11 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
                           isActive
                             ? 'bg-white/20 text-white'
                             : isDone
-                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+                              ? 'bg-surface-900 text-surface-50 dark:bg-surface-100 dark:text-surface-900'
                               : 'bg-surface-100 dark:bg-surface-800 text-surface-500 dark:text-surface-400'
                         }`}
                       >
-                        {isDone ? '✓ ' : ''}
+                        {isDone && <Icon name="check" className="mr-0.5 inline h-3 w-3" />}
                         {rated}/{total}
                       </span>
                     </span>
@@ -301,6 +312,16 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
               <div className="animate-spin rounded-full h-8 w-8 border-2 border-brand-600 border-t-transparent mb-3" />
               <p className="text-xs sm:text-sm">Analizando grafo curricular y prerrequisitos...</p>
             </div>
+          ) : modules.length === 0 ? (
+            <div className="py-12 flex flex-col items-center justify-center text-center p-6 text-surface-400">
+              <Icon name="bookOpen" className="h-10 w-10 text-surface-300 dark:text-surface-600 mb-2" />
+              <p className="text-sm font-semibold text-surface-700 dark:text-surface-300">
+                No hay módulos disponibles
+              </p>
+              <p className="text-xs mt-1">
+                Esta materia no cuenta con temas ni módulos registrados en el grafo curricular.
+              </p>
+            </div>
           ) : activeModule ? (
             modules
               .filter((mod) => mod.id === activeModule?.id)
@@ -309,7 +330,7 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
                 <div className="mb-4 pb-2 border-b border-surface-200/80 dark:border-surface-800/60 flex items-center justify-between">
                   <div>
                     <h3 className="text-sm sm:text-base font-display font-bold text-surface-900 dark:text-white flex items-center gap-2">
-                      <span className="text-brand-600 dark:text-brand-400">📂</span> {mod.name}
+                      <Icon name="layers" className="h-4 w-4 shrink-0 text-brand-600 dark:text-brand-400" /> {mod.name}
                     </h3>
                   </div>
                   <span className="text-xs text-surface-400 font-mono">{mod.topics?.length} temas</span>
@@ -372,16 +393,18 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
                                 key={p.id}
                                 className={`text-[10px] px-2 py-0.5 rounded-md border font-medium ${
                                   p.strength === 'HARD'
-                                    ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-300 border-rose-200 dark:border-rose-800/40'
-                                    : 'bg-sky-50 dark:bg-sky-950/30 text-sky-600 dark:text-sky-300 border-sky-200 dark:border-sky-800/40'
+                                    ? 'bg-brand-50 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 border-brand-200 dark:border-brand-500/30'
+                                    : 'bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-300 border-surface-200 dark:border-surface-700'
                                 }`}
                               >
-                                🔒 Requiere {p.strength === 'HARD' ? 'estricto' : 'sugerido'}: {p.name}
+                                <Icon name="lock" className="mr-1 inline h-3 w-3" />
+                                Requiere {p.strength === 'HARD' ? 'estricto' : 'sugerido'}: {p.name}
                               </span>
                             ))
                           ) : (
                             <span className="text-[10px] text-surface-400 font-mono">
-                              🌱 Concepto inicial (Sin prerrequisitos)
+                              <Icon name="sprout" className="mr-1 inline h-3 w-3" />
+                              Concepto inicial (Sin prerrequisitos)
                             </span>
                           )}
                         </div>
@@ -393,7 +416,9 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
             ))
           ) : (
             <div className="py-16 px-6 text-center text-surface-500 dark:text-surface-400">
-              <span className="text-3xl block mb-3">🗂️</span>
+              <span className="mb-3 flex justify-center text-surface-400">
+                <Icon name="bookOpen" className="h-8 w-8" />
+              </span>
               <p className="text-sm">
                 Esta materia todavía no tiene módulos con temas registrados en el grafo curricular.
               </p>
@@ -407,9 +432,10 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
                 type="button"
                 onClick={() => goToModule(activeModuleIndex - 1)}
                 disabled={activeModuleIndex <= 0}
-                className="px-4 py-2 rounded-xl text-xs font-semibold border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                ← Módulo anterior
+                <Icon name="arrowLeft" className="h-3.5 w-3.5" />
+                Módulo anterior
               </button>
               <span className="text-xs text-surface-400 font-mono">
                 {activeModuleIndex + 1} / {modules.length}
@@ -418,9 +444,10 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
                 type="button"
                 onClick={() => goToModule(activeModuleIndex + 1)}
                 disabled={activeModuleIndex >= modules.length - 1}
-                className="px-4 py-2 rounded-xl text-xs font-semibold border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
-                Módulo siguiente →
+                Módulo siguiente
+                <Icon name="arrowRight" className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
@@ -429,7 +456,7 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
         {/* Footer */}
         <div className="p-5 border-t border-surface-200 dark:border-surface-800 bg-surface-50 dark:bg-surface-950 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-xs text-surface-500 dark:text-surface-400 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-surface-900 dark:bg-surface-100 animate-pulse" />
             <span>
               Progreso del diagnóstico: <strong>{evaluatedCount}/{totalTopics}</strong> temas evaluados
             </span>
@@ -455,7 +482,7 @@ const SelfDiagnosisModal = ({ isOpen, onClose, onRouteGenerated }: SelfDiagnosis
                 </>
               ) : (
                 <>
-                  <span>🚀</span>
+                  <Icon name="rocket" className="h-4 w-4" />
                   <span>Generar Mi Ruta Adaptativa</span>
                 </>
               )}

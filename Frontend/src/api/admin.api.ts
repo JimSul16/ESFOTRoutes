@@ -13,6 +13,9 @@ export interface CreateUserPayload {
   email: string;
   password: string;
   roleName: AdminRoleName;
+  career: string;
+  semester: number;
+  uniqueId: string;
 }
 
 export interface UpdateUserPayload {
@@ -20,6 +23,9 @@ export interface UpdateUserPayload {
   email?: string;
   password?: string;
   roleName?: AdminRoleName;
+  career?: string;
+  semester?: number;
+  uniqueId?: string;
 }
 
 /** `POST|PUT /admin/users[/:id]` → `{ message, user }` */
@@ -63,5 +69,26 @@ export const toggleUserStatus = async (id: string): Promise<AdminActionResponse>
 
 export const unlockUser = async (id: string): Promise<AdminActionResponse> => {
   const response = await httpClient.post<AdminActionResponse>(`/admin/unlock/${id}`);
+  return response.data;
+};
+
+export interface AdminUserProgress {
+  user: User & { career?: string | null; semester?: number | null; uniqueId?: string | null };
+  progress: {
+    points: number;
+    level: number;
+    streak: number;
+    modulesCompleted: number;
+    modulesPassed: number;
+    averageScore: number | null;
+    routesEnrolled: number;
+    averageProgress: number;
+    routes: Array<{ id: string; title: string; category?: string | null; progress: number; enrolledAt: string }>;
+  };
+}
+
+/** `:id` acepta el id numérico o el ID único EPN de 9 dígitos (RR-005). */
+export const getUserProgress = async (id: string): Promise<AdminUserProgress> => {
+  const response = await httpClient.get<AdminUserProgress>(`/admin/users/${id}/progress`);
   return response.data;
 };

@@ -73,3 +73,29 @@ export const completeModule = async (
   const response = await httpClient.post<CompleteModuleResponse>('/routes/complete-module', data);
   return response.data;
 };
+
+// ─── Evaluaciones de Módulo (RR-008) ──────────────────────────────────────────
+
+export interface ModuleAssessmentItem {
+  id: string | number;
+  moduleId: string | number;
+  type: string;
+  content: unknown;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModuleAssessmentsResponse {
+  module: { id: string | number; title: string; routeId: string | number };
+  assessments: ModuleAssessmentItem[];
+  total: number;
+}
+
+export const getModuleAssessments = async (
+  moduleId: string
+): Promise<ModuleAssessmentsResponse> => {
+  const response = await httpClient.get<ModuleAssessmentsResponse>(
+    `/routes/modules/${moduleId}/assessments`
+  );
+  return response.data;
+};

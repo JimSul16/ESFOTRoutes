@@ -52,7 +52,6 @@ const renderDetalle = (onAssessmentComplete = vi.fn()) =>
         onBack={vi.fn()}
         contextoEvaluacion=""
         setContextoEvaluacion={vi.fn()}
-        onSendToAI={vi.fn()}
         isAlreadyEnrolled={false}
         onAssessmentComplete={onAssessmentComplete}
       />

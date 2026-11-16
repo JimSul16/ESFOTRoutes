@@ -1,35 +1,42 @@
+import { Icon, type IconName } from '@/components/ui';
 import type { Resource } from '../../../../types';
 
-const getResourceIcon = (type?: string) => {
+interface ResourceTypeConfig {
+  badge: string;
+  icon: IconName;
+  label: string;
+}
+
+const getResourceIcon = (type?: string): ResourceTypeConfig => {
   switch (type?.toUpperCase()) {
     case 'PDF':
       return {
-        badge: 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400 border-rose-200 dark:border-rose-500/20',
-        icon: '📄',
+        badge: 'bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400 border-brand-200 dark:border-brand-500/20',
+        icon: 'fileText',
         label: 'Documento PDF'
       };
     case 'VIDEO':
       return {
-        badge: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20',
-        icon: '🎬',
+        badge: 'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300 border-brand-200 dark:border-brand-500/20',
+        icon: 'circlePlay',
         label: 'Video tutorial'
       };
     case 'LINK':
       return {
-        badge: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20',
-        icon: '🔗',
+        badge: 'bg-surface-100 text-surface-700 dark:bg-surface-800 dark:text-surface-300 border-surface-200 dark:border-surface-700',
+        icon: 'externalLink',
         label: 'Enlace web'
       };
     case 'IMAGE':
       return {
-        badge: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border-amber-200 dark:border-amber-500/20',
-        icon: '🖼️',
+        badge: 'bg-transparent text-surface-700 border-surface-400 dark:text-surface-300 dark:border-surface-600',
+        icon: 'image',
         label: 'Infografía'
       };
     default:
       return {
         badge: 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-400 border-surface-200 dark:border-surface-700',
-        icon: '📌',
+        icon: 'bookMarked',
         label: 'Recurso'
       };
   }
@@ -59,8 +66,8 @@ const ResourceCard = ({ resource: res }: ResourceCardProps) => {
       className="flex items-center justify-between p-3.5 sm:p-4 bg-white dark:bg-surface-900/60 rounded-xl border border-surface-200/80 dark:border-surface-800 hover:border-brand-500/50 hover:bg-brand-50/30 dark:hover:bg-brand-950/20 transition-all group shadow-2xs hover:shadow-sm"
     >
       <div className="flex items-center gap-3 min-w-0">
-        <span className={`w-10 h-10 rounded-xl border flex items-center justify-center text-lg shrink-0 ${typeConfig.badge}`}>
-          {typeConfig.icon}
+        <span className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${typeConfig.badge}`}>
+          <Icon name={typeConfig.icon} className="h-5 w-5" />
         </span>
         <div className="min-w-0">
           <h5 className="font-semibold text-sm text-surface-900 dark:text-surface-100 group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors truncate">
@@ -72,9 +79,7 @@ const ResourceCard = ({ resource: res }: ResourceCardProps) => {
         </div>
       </div>
       <div className="shrink-0 ml-3 p-1.5 rounded-lg text-surface-400 group-hover:text-brand-600 group-hover:bg-brand-100/50 dark:group-hover:bg-brand-900/30 transition-colors">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-        </svg>
+        <Icon name="externalLink" className="w-4 h-4" />
       </div>
     </a>
   );

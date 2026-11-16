@@ -124,7 +124,7 @@ const ResourceBuilder = ({ initialData, onCancel, onSaveSuccess }: ResourceBuild
               className={`w-full bg-surface-50 dark:bg-surface-800 border ${errors.title ? 'border-red-500' : 'border-surface-200 dark:border-surface-700'} rounded-xl px-4 py-2.5 text-surface-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all text-sm`}
               {...register('title')}
             />
-            {errors.title && <p className="text-rose-500 dark:text-rose-400 text-xs mt-1.5 font-medium">{errors.title.message}</p>}
+            {errors.title && <p className="text-brand-500 dark:text-brand-400 text-xs mt-1.5 font-medium">{errors.title.message}</p>}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -163,7 +163,7 @@ const ResourceBuilder = ({ initialData, onCancel, onSaveSuccess }: ResourceBuild
                   className="w-full text-surface-600 dark:text-surface-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-brand-600 file:text-white hover:file:bg-brand-500 cursor-pointer text-sm"
                 />
                 {isEditing && currentUrl && !selectedFile && (
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1.5 font-medium">Ya existe un archivo guardado.</p>
+                  <p className="text-xs text-surface-700 dark:text-surface-300 mt-1.5 font-medium">Ya existe un archivo guardado.</p>
                 )}
               </div>
             )}

@@ -83,30 +83,26 @@ describe('RoutesViewer — un único camino para crear rutas', () => {
   });
 
   /**
-   * Regresión: el botón "Nueva Ruta Personalizada" navegaba a la pestaña
-   * `crear-ruta`, que ejecutaba el generador IA (`POST /routes/generate`).
-   * Ese camino se eliminó: la ruta personalizada del estudiante se genera
-   * solo desde el autodiagnóstico curricular.
+   * Regresión: el encabezado repetía el acceso al autodiagnóstico que ya vive
+   * en el sidebar. Se eliminó ese botón: dentro del componente el único acceso
+   * al autodiagnóstico es el estado vacío.
    */
-  it('el botón de ruta personalizada abre el autodiagnóstico', async () => {
+  it('el encabezado no repite el acceso al autodiagnóstico', async () => {
     mockGetMyRoutes.mockResolvedValue([ruta()]);
-    const onOpenSelfDiagnosis = vi.fn();
 
     render(
       <RoutesViewer
         setActiveTab={vi.fn()}
         onSelectRoute={vi.fn()}
-        onOpenSelfDiagnosis={onOpenSelfDiagnosis}
+        onOpenSelfDiagnosis={vi.fn()}
       />
     );
 
     await waitFor(() => expect(screen.getByText('Ruta de Redes')).toBeTruthy());
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /Autodiagnóstico y Ruta Adaptativa/i })
-    );
-
-    expect(onOpenSelfDiagnosis).toHaveBeenCalledTimes(1);
+    expect(
+      screen.queryByRole('button', { name: /Autodiagnóstico y Ruta Adaptativa/i })
+    ).toBeNull();
   });
 
   it('el estado vacío también ofrece el autodiagnóstico', async () => {
@@ -130,3 +126,113 @@ describe('RoutesViewer — un único camino para crear rutas', () => {
     expect(onOpenSelfDiagnosis).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('RoutesViewer — imagen de portada de la ruta', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renderiza la imagen de portada cuando ruta.imageUrl está presente', async () => {
+    mockGetMyRoutes.mockResolvedValue([
+      ruta({ id: '1', title: 'Ruta de Redes', imageUrl: 'https://example.com/portada.jpg' }),
+    ]);
+
+    render(
+      <RoutesViewer
+        setActiveTab={vi.fn()}
+        onSelectRoute={vi.fn()}
+        onOpenSelfDiagnosis={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText('Ruta de Redes')).toBeTruthy());
+
+    const img = screen.getByAltText('Portada de Ruta de Redes');
+    expect(img).toBeTruthy();
+    expect(img.getAttribute('src')).toBe('https://example.com/portada.jpg');
+  });
+
+  it('no rompe ni renderiza <img> si la ruta no tiene imageUrl', async () => {
+    mockGetMyRoutes.mockResolvedValue([
+      ruta({ id: '1', title: 'Ruta sin portada', imageUrl: undefined }),
+    ]);
+
+    render(
+      <RoutesViewer
+        setActiveTab={vi.fn()}
+        onSelectRoute={vi.fn()}
+        onOpenSelfDiagnosis={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText('Ruta sin portada')).toBeTruthy());
+
+    expect(screen.queryByAltText(/Portada de/)).toBeNull();
+  });
+});
+
+describe('RoutesViewer — buscador de rutas', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('filtra las rutas inscritas en tiempo real y permite limpiar la búsqueda', async () => {
+    mockGetMyRoutes.mockResolvedValue([
+      ruta({ id: '1', title: 'Arquitectura de Software', category: 'Software' }),
+      ruta({ id: '2', title: 'Redes y Telecomunicaciones', category: 'Redes' }),
+    ]);
+
+    render(
+      <RoutesViewer
+        setActiveTab={vi.fn()}
+        onSelectRoute={vi.fn()}
+        onOpenSelfDiagnosis={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText('Arquitectura de Software')).toBeTruthy());
+    expect(screen.getByText('Redes y Telecomunicaciones')).toBeTruthy();
+
+    const input = screen.getByPlaceholderText('Buscar entre mis rutas por título, descripción o categoría...');
+    fireEvent.change(input, { target: { value: 'arquitectura' } });
+
+    expect(screen.getByText('Arquitectura de Software')).toBeTruthy();
+    expect(screen.queryByText('Redes y Telecomunicaciones')).toBeNull();
+    expect(screen.getByText('1 de 2 rutas')).toBeTruthy();
+
+    // Limpiar búsqueda
+    const clearBtn = screen.getByRole('button', { name: 'Borrar texto' });
+    fireEvent.click(clearBtn);
+
+    expect(screen.getByText('Redes y Telecomunicaciones')).toBeTruthy();
+    expect(screen.getByText('2 rutas inscritas')).toBeTruthy();
+  });
+
+  it('muestra estado vacío cuando no hay coincidencias', async () => {
+    mockGetMyRoutes.mockResolvedValue([
+      ruta({ id: '1', title: 'Arquitectura de Software' }),
+    ]);
+
+    render(
+      <RoutesViewer
+        setActiveTab={vi.fn()}
+        onSelectRoute={vi.fn()}
+        onOpenSelfDiagnosis={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText('Arquitectura de Software')).toBeTruthy());
+
+    const input = screen.getByPlaceholderText('Buscar entre mis rutas por título, descripción o categoría...');
+    fireEvent.change(input, { target: { value: 'inexistente' } });
+
+    expect(screen.getByText('No se encontraron rutas')).toBeTruthy();
+    expect(screen.getByText('0 de 1 rutas')).toBeTruthy();
+
+    const clearBtn = screen.getByRole('button', { name: 'Limpiar búsqueda' });
+    fireEvent.click(clearBtn);
+
+    expect(screen.getByText('Arquitectura de Software')).toBeTruthy();
+  });
+});
+

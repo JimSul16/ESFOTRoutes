@@ -86,6 +86,6 @@ describe('ConfirmDialog', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'Aceptar' })).toHaveClass('bg-primary-600');
+    expect(screen.getByRole('button', { name: 'Aceptar' })).toHaveClass('bg-brand-600');
   });
 });

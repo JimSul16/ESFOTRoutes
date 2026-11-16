@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthProvider } from '../../context/AuthProvider';
 import { getProfile } from '../../api/auth.api';
@@ -121,6 +121,13 @@ describe('StudentDashboard — un único camino para rutas personalizadas', () =
     mockGetMyRoutes.mockResolvedValue([]);
   });
 
+  /** Acceso al autodiagnóstico que vive en el sidebar; el encabezado ya no lo repite. */
+  const botonSidebarAutodiagnostico = () =>
+    within(screen.getByRole('navigation', { name: /Navegación del estudiante/i })).getByRole(
+      'button',
+      { name: /Autodiagnóstico/i }
+    );
+
   /**
    * Regresión: el panel tenía una pestaña `crear-ruta` con el generador IA
    * (`POST /routes/generate`), además del autodiagnóstico. Se eliminó el
@@ -135,16 +142,17 @@ describe('StudentDashboard — un único camino para rutas personalizadas', () =
     fireEvent.click(screen.getByRole('button', { name: 'Mis Rutas' }));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /Autodiagnóstico y Ruta Adaptativa/i })
-      ).toBeTruthy();
+      expect(botonSidebarAutodiagnostico()).toBeTruthy();
     });
 
+    expect(
+      screen.queryByRole('button', { name: /Autodiagnóstico y Ruta Adaptativa/i })
+    ).toBeNull();
     expect(screen.queryByText('Nueva Ruta Personalizada')).toBeNull();
     expect(screen.queryByText('Generador de Rutas IA')).toBeNull();
   });
 
-  it('el botón de ruta personalizada abre el autodiagnóstico', async () => {
+  it('el botón del sidebar abre el autodiagnóstico', async () => {
     mockGetProfile.mockResolvedValue(ESTUDIANTE);
     montar();
 
@@ -153,14 +161,10 @@ describe('StudentDashboard — un único camino para rutas personalizadas', () =
     fireEvent.click(screen.getByRole('button', { name: 'Mis Rutas' }));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /Autodiagnóstico y Ruta Adaptativa/i })
-      ).toBeTruthy();
+      expect(botonSidebarAutodiagnostico()).toBeTruthy();
     });
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /Autodiagnóstico y Ruta Adaptativa/i })
-    );
+    fireEvent.click(botonSidebarAutodiagnostico());
 
     await waitFor(() => {
       expect(screen.getByText('Autodiagnóstico Curricular')).toBeTruthy();

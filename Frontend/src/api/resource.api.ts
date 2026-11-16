@@ -44,3 +44,45 @@ export const updateResource = async (
 export const deleteResource = async (id: string): Promise<void> => {
   await httpClient.delete(`/resources/${id}`);
 };
+
+// ─── Catálogo de Recursos para Estudiantes (RR-006) ───────────────────────────
+
+export interface CatalogQuery {
+  search?: string;
+  type?: 'LINK' | 'PDF' | 'VIDEO' | 'IMAGE' | 'DOCUMENT';
+}
+
+export interface CatalogResourceItem {
+  id: string;
+  title: string;
+  description?: string | null;
+  type: 'LINK' | 'PDF' | 'VIDEO' | 'IMAGE' | 'DOCUMENT';
+  url: string;
+  createdAt?: string;
+  authorName?: string;
+}
+
+export interface CatalogResponse {
+  resources: CatalogResourceItem[];
+  total: number;
+}
+
+export const getResourceCatalog = async (
+  query?: CatalogQuery
+): Promise<CatalogResponse> => {
+  const params = new URLSearchParams();
+  if (query?.search?.trim()) params.append('search', query.search.trim());
+  if (query?.type) params.append('type', query.type);
+
+  const qs = params.toString();
+  const response = await httpClient.get<CatalogResponse>(
+    `/resources/catalog${qs ? `?${qs}` : ''}`
+  );
+  return {
+    ...response.data,
+    resources: (response.data.resources || []).map((r) => ({
+      ...r,
+      id: String(r.id),
+    })),
+  };
+};

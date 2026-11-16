@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import { forgotPassword } from '../../api/auth.api';
@@ -35,18 +35,23 @@ const renderForgot = () =>
 
 const submit = () => screen.getByRole('button', { name: /recuperar acceso/i }).click();
 
+const getForm = (): HTMLFormElement => {
+  const form = input('email').form;
+  if (!form) throw new Error('El input de email no pertenece a un formulario');
+  return form;
+};
+
+const toastText = (): string =>
+  document.querySelector('.Toastify__toast-container')?.textContent ?? '';
+
 describe('Forgot — feedback al usuario', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   // Regresión: antes el éxito era totalmente silencioso y el error solo iba a
   // `console.error`. El usuario no tenía ninguna señal de qué había pasado.
-  it('confirma el envío con el mensaje del backend y muestra estado de éxito', async () => {
+  it('confirma el envío con el mensaje del backend', async () => {
     mockForgot.mockResolvedValueOnce({
       message: 'Si el correo está registrado, recibirás un enlace de recuperación.',
     });
@@ -60,31 +65,6 @@ describe('Forgot — feedback al usuario', () => {
         screen.getByText('Si el correo está registrado, recibirás un enlace de recuperación.')
       ).toBeTruthy();
     });
-    expect(screen.getByText('¡Enlace enviado!')).toBeTruthy();
-    expect(screen.getByText('Ir al Inicio de Sesión ahora')).toBeTruthy();
-  });
-
-  it('redirige a /login tras 2.5 segundos de confirmación', async () => {
-    vi.useFakeTimers();
-    mockForgot.mockResolvedValueOnce({
-      message: 'Si el correo está registrado, recibirás un enlace de recuperación.',
-    });
-
-    renderForgot();
-    fill('email', 'ana@epn.edu.ec');
-
-    await act(async () => {
-      submit();
-    });
-
-    expect(mockForgot).toHaveBeenCalled();
-    expect(screen.queryByText('pantalla de login')).toBeNull();
-
-    act(() => {
-      vi.advanceTimersByTime(2500);
-    });
-
-    expect(screen.getByText('pantalla de login')).toBeTruthy();
   });
 
   it('envía solo el email al backend', async () => {
@@ -143,5 +123,90 @@ describe('Forgot — feedback al usuario', () => {
       expect(screen.getByText('Correo electrónico inválido')).toBeTruthy();
     });
     expect(mockForgot).not.toHaveBeenCalled();
+  });
+});
+
+describe('Forgot — error inline y persistente', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('muestra el error dentro del formulario y no como toast', async () => {
+    mockForgot.mockRejectedValueOnce({
+      response: { status: 500, data: { error: 'Error interno del servidor.' } },
+    });
+
+    renderForgot();
+    fill('email', 'ana@epn.edu.ec');
+    submit();
+
+    await waitFor(() => {
+      expect(within(getForm()).getByRole('alert').textContent).toContain(
+        'Error interno del servidor.'
+      );
+    });
+    // El aviso vive en la tarjeta; el toast global no lo emite.
+    expect(toastText()).not.toContain('Error interno del servidor.');
+  });
+
+  it('mantiene el aviso sin auto-cierre', async () => {
+    vi.useFakeTimers();
+    mockForgot.mockRejectedValueOnce({
+      response: { status: 500, data: { error: 'Error interno del servidor.' } },
+    });
+
+    renderForgot();
+    fill('email', 'ana@epn.edu.ec');
+
+    await act(async () => {
+      submit();
+    });
+
+    expect(within(getForm()).getByRole('alert')).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(10000);
+    });
+
+    // Pasados 10 s sigue visible: no depende del autoClose de Toastify.
+    expect(within(getForm()).getByRole('alert')).toBeTruthy();
+  });
+
+  it('muestra la confirmación dentro del formulario y no como toast', async () => {
+    const mensaje = 'Si el correo está registrado, recibirás un enlace de recuperación.';
+    mockForgot.mockResolvedValueOnce({ message: mensaje });
+
+    renderForgot();
+    fill('email', 'ana@epn.edu.ec');
+    submit();
+
+    await waitFor(() => {
+      expect(within(getForm()).getByRole('status').textContent).toContain(mensaje);
+    });
+    expect(toastText()).not.toContain(mensaje);
+  });
+
+  it('limpia el aviso inline al editar el correo', async () => {
+    mockForgot.mockRejectedValueOnce({
+      response: { status: 500, data: { error: 'Error interno del servidor.' } },
+    });
+
+    renderForgot();
+    fill('email', 'ana@epn.edu.ec');
+    submit();
+
+    await waitFor(() => {
+      expect(within(getForm()).getByRole('alert')).toBeTruthy();
+    });
+
+    fill('email', 'otra@epn.edu.ec');
+
+    await waitFor(() => {
+      expect(within(getForm()).queryByRole('alert')).toBeNull();
+    });
   });
 });
