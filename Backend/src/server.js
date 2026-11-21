@@ -18,7 +18,6 @@ import chatRoutes     from './routes/chat.routes.js';
 import executeRoutes  from './routes/execute.routes.js';
 import graphRoutes    from './routes/graph.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
-import { aiLimiter }  from './middlewares/rateLimiter.middleware.js';
 
 const app = express();
 
@@ -120,7 +119,8 @@ app.use("/api/admin",     adminRoutes);
 app.use("/api/resources", resourceRoutes);
 app.use("/api/routes",    routeRoutes);
 app.use("/api/upload",    uploadRoutes);
-app.use("/api/chat",      aiLimiter, chatRoutes);
+// `aiLimiter` se aplica por ruta en chat.routes.js (los GET de historial no lo consumen).
+app.use("/api/chat",      chatRoutes);
 app.use("/api/execute",   executeRoutes);
 app.use("/api/graph",     graphRoutes);
 app.use("/api/analytics", analyticsRoutes);

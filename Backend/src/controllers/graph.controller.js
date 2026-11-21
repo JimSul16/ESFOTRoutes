@@ -7,6 +7,8 @@ import {
   getModuleTopicsByModuleId
 } from '../services/knowledgeGraph.service.js';
 import { generateAndPersistAdaptiveRoute } from '../services/graphAlgorithm.js';
+import { assertModuleAccess, sendAccessError } from '../services/routeAccess.service.js';
+import { parseId } from '../utils/index.js';
 
 /**
  * Obtener catálogo de materias con módulos y temas
@@ -120,10 +122,15 @@ export const getRecommendations = async (req, res) => {
  */
 export const getModuleTopics = async (req, res) => {
   try {
-    const { moduleId } = req.params;
+    const moduleId = parseId(req.params.moduleId);
+    if (moduleId === null) {
+      return res.status(400).json({ success: false, error: 'El identificador del módulo no es válido.' });
+    }
+    await assertModuleAccess(req.user.id, moduleId);
     const topics = await getModuleTopicsByModuleId(moduleId);
     return res.json({ success: true, topics });
   } catch (error) {
+    if (sendAccessError(res, error)) return;
     console.error(`Error en getModuleTopics para ${req.params.moduleId}:`, error);
     return res.status(500).json({ success: false, error: 'Error al consultar los temas del módulo.' });
   }

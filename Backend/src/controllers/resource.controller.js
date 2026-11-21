@@ -1,4 +1,20 @@
 import { turso } from '../config/turso.js';
+import { isAdminUser } from '../services/routeAccess.service.js';
+
+/**
+ * Recursos visibles para un estudiante: los de autoría de un ADMIN o los que
+ * forman parte de una ruta pública. Los recursos que crea la IA para la ruta
+ * privada de un alumno se guardaban en la misma tabla y salían en el
+ * catálogo de todos.
+ */
+const STUDENT_VISIBLE_RESOURCE = `(
+  EXISTS (SELECT 1 FROM UserRole ur JOIN Role ro ON ro.id = ur.roleId
+           WHERE ur.userId = r.authorId AND ro.name = 'ADMIN')
+  OR EXISTS (SELECT 1 FROM ModuleResource mr
+               JOIN Module m ON m.id = mr.moduleId
+               JOIN LearningRoute lr ON lr.id = m.routeId
+              WHERE mr.resourceId = r.id AND lr.isPublic = 1)
+)`;
 import { parseId } from '../utils/index.js';
 
 export const createResource = async (req, res) => {
@@ -37,10 +53,12 @@ export const createResource = async (req, res) => {
 
 export const getResources = async (req, res) => {
   try {
+    const isAdmin = await isAdminUser(req.user.id);
     const result = await turso.execute(
       `SELECT r.*, u.name as authorName, u.email as authorEmail
        FROM Resource r
        JOIN User u ON u.id = r.authorId
+       ${isAdmin ? '' : `WHERE ${STUDENT_VISIBLE_RESOURCE}`}
        ORDER BY r.createdAt DESC`
     );
     return res.status(200).json(result.rows);
@@ -83,6 +101,10 @@ export const getCatalog = async (req, res) => {
       }
       conditions.push(`r.type = ?`);
       args.push(type);
+    }
+
+    if (!(await isAdminUser(req.user.id))) {
+      conditions.push(STUDENT_VISIBLE_RESOURCE);
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

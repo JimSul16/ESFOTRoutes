@@ -81,6 +81,7 @@ export {
   getMyRoutes,
   enrollRoute,
   completeModule,
+  openResource,
   getModuleAssessments,
 } from './route.api';
 export type {
@@ -90,10 +91,13 @@ export type {
 } from './route.api';
 
 // Chat
-export { sendChatMessage, generateAssessment } from './chat.api';
+export { sendChatMessage, generateAssessment, getChatSessions, getChatMessages } from './chat.api';
 export type {
   AssessmentPayload,
   AssessmentResponse,
+  ChatSessionsQuery,
+  ChatSessionsResponse,
+  ChatMessagesResponse,
   SendChatMessagePayload,
   SendChatMessageResponse,
 } from './chat.api';

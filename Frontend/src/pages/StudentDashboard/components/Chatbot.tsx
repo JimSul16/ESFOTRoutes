@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { sendChatMessage } from '../../../api/chat.api';
 import { getModuleTopics, getTopicGraphContext } from '../../../api/graph.api';
 import { getApiErrorMessage } from '../../../api/errors';
+import { useChatHistory } from '../../../hooks/useChatHistory';
 import type { ChatMessage, TopicGraphContext } from '../../../types';
 
 /** Mensaje en el hilo, con el archivo adjunto opcional que se subió. */
@@ -46,8 +47,12 @@ const Chatbot = ({
   const [topicId, setTopicId] = useState<string | null>(null);
   const [topicContext, setTopicContext] = useState<TopicGraphContext | null>(null);
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const { sessions, loadingSessions, loadSessions, loadSession, loadLatest } = useChatHistory(activeModule?.id);
 
   const currentGreeting = useMemo<ThreadMessage>(
     () => ({
@@ -81,7 +86,58 @@ const Chatbot = ({
     setMessages([]);
     setSessionId(null);
     setRetoEnviadoId(null);
+    setHistoryOpen(false);
   }, [routeId, activeModule?.id]);
+
+  /**
+   * Al abrir el chat en un contexto nuevo se retoma la última conversación
+   * guardada de ese módulo. Antes el historial se perdía al cerrar el panel,
+   * cambiar de módulo o recargar, aunque el backend lo guardaba todo.
+   * Si el alumno ya escribió algo mientras cargaba, no se pisa su hilo.
+   */
+  const restoredContextRef = useRef<string | null>(null);
+  const messageCountRef = useRef(0);
+  useEffect(() => {
+    messageCountRef.current = messages.length;
+  }, [messages]);
+
+  const contextKey = `${routeId ?? ''}:${activeModule?.id ?? ''}`;
+  useEffect(() => {
+    if (!showChat || restoredContextRef.current === contextKey) return;
+    restoredContextRef.current = contextKey;
+
+    let cancelled = false;
+    void loadLatest().then((latest) => {
+      if (cancelled || !latest || messageCountRef.current > 0) return;
+      setMessages(latest.messages);
+      setSessionId(latest.sessionId);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showChat, contextKey, loadLatest]);
+
+  const toggleHistory = () => {
+    if (!historyOpen) void loadSessions();
+    setHistoryOpen((open) => !open);
+  };
+
+  const openSession = async (id: number) => {
+    const loaded = await loadSession(id);
+    if (loaded) {
+      setMessages(loaded.messages);
+      setSessionId(loaded.sessionId);
+      setRetoEnviadoId(null);
+    }
+    setHistoryOpen(false);
+  };
+
+  const startNewConversation = () => {
+    setMessages([]);
+    setSessionId(null);
+    setRetoEnviadoId(null);
+    setHistoryOpen(false);
+  };
 
   /**
    * Resuelve el tema curricular del módulo activo en el grafo y guarda su
@@ -261,14 +317,72 @@ const Chatbot = ({
               )}
             </div>
           </div>
-          <button 
-            onClick={onClose} 
-            className="text-white/80 hover:text-white hover:bg-white/15 p-2 rounded-xl transition-colors focus:outline-hidden"
-            aria-label="Cerrar chat"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={toggleHistory}
+              aria-expanded={historyOpen}
+              aria-label="Conversaciones anteriores"
+              title="Conversaciones anteriores"
+              className="text-white/80 hover:text-white hover:bg-white/15 p-2 rounded-xl transition-colors focus:outline-hidden"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </button>
+            <button
+              onClick={onClose}
+              className="text-white/80 hover:text-white hover:bg-white/15 p-2 rounded-xl transition-colors focus:outline-hidden"
+              aria-label="Cerrar chat"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
         </div>
+
+        {historyOpen && (
+          <div className="border-b border-surface-200 dark:border-surface-800 bg-white dark:bg-surface-900 max-h-[45%] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400">
+                Conversaciones anteriores
+              </h4>
+              <button
+                type="button"
+                onClick={startNewConversation}
+                className="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline"
+              >
+                Nueva conversación
+              </button>
+            </div>
+            {loadingSessions ? (
+              <p className="px-4 pb-3 text-sm text-surface-400">Cargando historial...</p>
+            ) : sessions.length === 0 ? (
+              <p className="px-4 pb-3 text-sm italic text-surface-400">Aún no hay conversaciones guardadas en este contexto.</p>
+            ) : (
+              <ul className="pb-2">
+                {sessions.map((s) => (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => void openSession(s.id)}
+                      className={`w-full text-left px-4 py-2.5 hover:bg-surface-50 dark:hover:bg-surface-800/60 transition-colors ${
+                        String(s.id) === sessionId ? 'bg-brand-50/60 dark:bg-brand-500/10' : ''
+                      }`}
+                    >
+                      <span className="block text-sm font-semibold text-surface-800 dark:text-surface-100 truncate">
+                        {s.title || s.moduleTitle || 'Sesión de tutoría'}
+                      </span>
+                      <span className="block text-xs text-surface-500 dark:text-surface-400 truncate">
+                        {s.lastMessage || 'Sin mensajes'}
+                      </span>
+                      <span className="block text-[11px] text-surface-400">
+                        {s.messageCount} mensajes · {(s.lastMessageAt || s.updatedAt || '').slice(0, 16)}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
           {displayMessages.map((msg, idx) => {

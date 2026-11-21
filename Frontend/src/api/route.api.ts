@@ -5,6 +5,7 @@ import type {
   CompleteModuleResponse,
   EnrollResponse,
   LearningRoute,
+  OpenResourceResponse,
   RawLearningRoute,
   RoutePayload,
 } from '../types';
@@ -71,6 +72,15 @@ export const completeModule = async (
   data: CompleteModulePayload
 ): Promise<CompleteModuleResponse> => {
   const response = await httpClient.post<CompleteModuleResponse>('/routes/complete-module', data);
+  return response.data;
+};
+
+/**
+ * Registra que el alumno abrió un recurso (suma al 60 % de recursos del
+ * progreso). Idempotente en el backend.
+ */
+export const openResource = async (resourceId: string): Promise<OpenResourceResponse> => {
+  const response = await httpClient.post<OpenResourceResponse>(`/routes/resources/${resourceId}/open`);
   return response.data;
 };
 

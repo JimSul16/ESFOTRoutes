@@ -50,9 +50,16 @@ const sanitizeUrl = (url: string) => {
 
 export interface ResourceCardProps {
   resource: Resource | null | undefined;
+  /** El alumno ya abrió este recurso (suma al progreso de la ruta). */
+  opened?: boolean;
+  /**
+   * Se llama al abrir el recurso. No cancela la navegación: el enlace sigue
+   * abriéndose de forma nativa en otra pestaña (sin bloqueos de pop-up).
+   */
+  onOpen?: (resourceId: string) => void;
 }
 
-const ResourceCard = ({ resource: res }: ResourceCardProps) => {
+const ResourceCard = ({ resource: res, opened = false, onOpen }: ResourceCardProps) => {
   if (!res) return null;
 
   const typeConfig = getResourceIcon(res.type);
@@ -62,7 +69,11 @@ const ResourceCard = ({ resource: res }: ResourceCardProps) => {
       href={sanitizeUrl(res.url)}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={`Abrir el recurso: ${res.title}`}
+      onClick={() => onOpen?.(res.id)}
+      onAuxClick={(event) => {
+        if (event.button === 1) onOpen?.(res.id);
+      }}
+      aria-label={`Abrir el recurso: ${res.title}${opened ? ' (visto)' : ''}`}
       className="flex items-center justify-between p-3.5 sm:p-4 bg-white dark:bg-surface-900/60 rounded-xl border border-surface-200/80 dark:border-surface-800 hover:border-brand-500/50 hover:bg-brand-50/30 dark:hover:bg-brand-950/20 transition-all group shadow-2xs hover:shadow-sm"
     >
       <div className="flex items-center gap-3 min-w-0">
@@ -75,6 +86,12 @@ const ResourceCard = ({ resource: res }: ResourceCardProps) => {
           </h5>
           <span className="text-[11px] font-medium text-surface-500 dark:text-surface-400">
             {typeConfig.label}
+            {opened && (
+              <span className="ml-2 inline-flex items-center gap-1 font-semibold text-surface-700 dark:text-surface-200">
+                <Icon name="check" className="h-3 w-3" />
+                Visto
+              </span>
+            )}
           </span>
         </div>
       </div>

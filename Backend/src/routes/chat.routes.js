@@ -1,10 +1,21 @@
 import { Router } from 'express';
-import { processChatMessage, generateModuleAssessment } from '../controllers/chat.controller.js';
+import {
+  processChatMessage,
+  generateModuleAssessment,
+  getChatSessions,
+  getChatMessages
+} from '../controllers/chat.controller.js';
 import { verifyToken, checkRoles } from '../middlewares/auth.middleware.js';
+import { aiLimiter } from '../middlewares/rateLimiter.middleware.js';
 
 const router = Router();
 
-router.post('/send', verifyToken, checkRoles(['STUDENT']), processChatMessage);
-router.post('/assessment', verifyToken, checkRoles(['STUDENT']), generateModuleAssessment);
+// Solo los endpoints que llaman a Gemini llevan `aiLimiter` (por usuario).
+router.post('/send', verifyToken, aiLimiter, checkRoles(['STUDENT']), processChatMessage);
+router.post('/assessment', verifyToken, aiLimiter, checkRoles(['STUDENT']), generateModuleAssessment);
+
+// Lectura del historial: no consume cuota de IA.
+router.get('/sessions', verifyToken, checkRoles(['STUDENT']), getChatSessions);
+router.get('/sessions/:sessionId/messages', verifyToken, checkRoles(['STUDENT']), getChatMessages);
 
 export default router;

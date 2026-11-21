@@ -212,6 +212,10 @@ export interface Module {
    * en 0.
    */
   isPassed?: boolean;
+  /** Cuestionario teórico aprobado (`ModuleProgress.passedTheory`). */
+  passedTheory?: boolean;
+  /** Reto final aprobado; solo existe en el último módulo. */
+  passedPractice?: boolean;
   score?: number | null;
   /** El backend hace `JOIN Resource r`, así que son filas completas. */
   resources?: Resource[];
@@ -238,13 +242,15 @@ export interface EnrollResponse {
 
 /**
  * Body de `POST /routes/complete-module`.
- * Ojo: el backend lee `{ moduleId, score, passed }`; `passed` va primero y si
- * es `false` responde 200 sin otorgar XP (no es un error).
+ * Ojo: si `passed` es `false` responde 200 sin otorgar XP (no es un error).
+ * `assessmentType` decide qué evaluación se aprueba: sin él el backend asume
+ * `'teoria'` y el reto final nunca contaría para el 100 %.
  */
 export interface CompleteModulePayload {
   moduleId: string;
   score: number;
   passed: boolean;
+  assessmentType: AssessmentType;
 }
 
 /** POST /routes/complete-module */
@@ -259,6 +265,16 @@ export interface CompleteModuleResponse {
   newLevel: number;
   score?: number;
   passed?: boolean;
+  assessmentType?: AssessmentType;
+}
+
+/** POST /routes/resources/:id/open */
+export interface OpenResourceResponse {
+  message: string;
+  resourceId: number;
+  firstOpen: boolean;
+  /** Avance recalculado de cada ruta inscrita que contiene el recurso. */
+  progressByRoute: { routeId: number; progress: number }[];
 }
 
 export interface LearningRoute {
@@ -283,10 +299,13 @@ export interface LearningRoute {
   /** Solo los añade `GET /routes/my-routes`. */
   enrollments?: Enrollment[];
   /**
-   * Avance 0-100. Lo calcula el backend a partir de `ModuleProgress.isPassed`
-   * y solo viene en `GET /routes/my-routes`.
+   * Avance 0-100: 60 % recursos abiertos + 40 % evaluaciones (100 % las
+   * evaluaciones si la ruta no tiene recursos). Viene en `GET /routes/my-routes`
+   * y en `GET /routes/:id` cuando el alumno está inscrito.
    */
   progress?: number;
+  /** Ids de recursos que el alumno ya abrió (`GET /routes/:id`). */
+  openedResourceIds?: string[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -473,7 +492,23 @@ export interface ChatMessageRow {
   sessionId?: string | number;
   sender?: string;
   content: string;
+  fileUrl?: string | null;
+  isChallenge?: number | boolean;
   createdAt?: string;
+}
+
+/** Fila de `GET /chat/sessions`. */
+export interface ChatSessionSummary {
+  id: number;
+  moduleId: number | null;
+  title: string | null;
+  topic: string | null;
+  createdAt: string;
+  updatedAt: string;
+  moduleTitle: string | null;
+  messageCount: number;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
 }
 
 export interface AssessmentQuestion {

@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'react-toastify';
 import { Icon } from '@/components/ui';
-import { enrollRoute, getRouteById } from '../../../api/route.api';
+import { enrollRoute, getRouteById, openResource } from '../../../api/route.api';
 import { generateAssessment } from '../../../api/chat.api';
 import { getApiErrorMessage } from '../../../api/errors';
 import AIAssessmentForm from './AIAssessmentForm';
@@ -87,19 +87,62 @@ const RouteDetail = ({
 
   /**
    * Relee la ruta desde el backend para obtener `progress` y el estado de
-   * inscripción al día. Ante error se mantiene la versión previa: es preferible
-   * mostrar datos ligeramente viejos a dejar la pantalla en blanco.
+   * inscripción al día. Ante un error de red se mantiene la versión previa: es
+   * preferible mostrar datos ligeramente viejos a dejar la pantalla en blanco.
+   * Un 403/404 sí se trata: la ruta es privada de otro alumno o ya no existe,
+   * y mostrar la copia vieja del catálogo sería engañoso.
    */
+  // `onBack` llega como arrow inline desde el padre: como dependencia de
+  // `refreshRoute` relanzaría la petición en cada render.
+  const onBackRef = useRef(onBack);
+  useEffect(() => {
+    onBackRef.current = onBack;
+  }, [onBack]);
+
   const refreshRoute = useCallback(async () => {
     if (!routeId) return;
 
     try {
       const fresh = await getRouteById(routeId);
       setRouteData(fresh);
-    } catch {
-      // silencioso a propósito
+    } catch (error: unknown) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 403 || status === 404) {
+        toast.error(getApiErrorMessage(error, 'No tienes acceso a esta ruta.'));
+        onBackRef.current();
+      }
     }
   }, [routeId]);
+
+  const openedResourceIds = useMemo(
+    () => new Set(routeData?.openedResourceIds ?? []),
+    [routeData?.openedResourceIds]
+  );
+
+  /**
+   * Registra la apertura de un recurso. Optimista y sin bloquear: el enlace
+   * ya se abrió en otra pestaña; si el registro falla no se molesta al alumno.
+   * El avance lo devuelve el backend (no se recalcula la fórmula aquí).
+   */
+  const handleOpenResource = useCallback(
+    (resourceId: string) => {
+      if (!isEnrolled || !routeId || openedResourceIds.has(resourceId)) return;
+
+      setRouteData((prev) =>
+        prev ? { ...prev, openedResourceIds: [...(prev.openedResourceIds ?? []), resourceId] } : prev
+      );
+
+      openResource(resourceId)
+        .then((res) => {
+          const entry = res.progressByRoute.find((p) => String(p.routeId) === routeId);
+          if (entry) setRouteData((prev) => (prev ? { ...prev, progress: entry.progress } : prev));
+        })
+        .catch(() => {
+          // no bloqueante
+        });
+    },
+    [isEnrolled, routeId, openedResourceIds]
+  );
 
   useEffect(() => {
     setRouteData(route);
@@ -147,9 +190,16 @@ const RouteDetail = ({
     if (data && assessingModuleId) {
       setRouteData((prev) => {
         if (!prev) return prev;
+        if (data.passed === false) return prev;
         const updatedModules = prev.modules?.map((m) => {
           if (m.id === assessingModuleId) {
-            return { ...m, isPassed: true, score: data.score != null ? data.score : 100 };
+            return {
+              ...m,
+              isPassed: true,
+              passedTheory: m.passedTheory || data.assessmentType === 'teoria',
+              passedPractice: m.passedPractice || data.assessmentType === 'completa',
+              score: data.score != null ? data.score : 100,
+            };
           }
           return m;
         });
@@ -265,7 +315,7 @@ const RouteDetail = ({
                       {assessmentType === 'completa' ? 'Reto final de certificación' : 'Cuestionario interactivo de práctica'}
                     </h3>
                     <p className="text-surface-500 dark:text-surface-400 text-xs sm:text-sm">
-                      {assessmentType === 'completa' ? 'Requiere al menos 70% de aciertos para aprobar el módulo.' : 'Evaluación formativa para consolidar conceptos sin penalización.'}
+                      {assessmentType === 'completa' ? 'Requiere al menos 70% de aciertos. Aprobarlo completa la ruta.' : 'Con al menos 70% de aciertos el cuestionario suma a tu avance.'}
                     </p>
                   </div>
                 </div>
@@ -334,6 +384,8 @@ const RouteDetail = ({
                 onViewAssessments={(id, title) =>
                   setSelectedModuleForAssessments({ id, title })
                 }
+                openedResourceIds={openedResourceIds}
+                onOpenResource={handleOpenResource}
               />
             </>
           )}

@@ -50,7 +50,7 @@ const AIAssessmentForm = ({
 
     if (!isPassed) {
       try {
-        await completeModule({ moduleId, score: percentage, passed: false });
+        await completeModule({ moduleId, score: percentage, passed: false, assessmentType });
       } catch (_) {
         // Fallo no bloqueante de telemetría
       }
@@ -60,7 +60,7 @@ const AIAssessmentForm = ({
     }
 
     try {
-      const res = await completeModule({ moduleId, score: percentage, passed: isPassed });
+      const res = await completeModule({ moduleId, score: percentage, passed: isPassed, assessmentType });
 
       const gained = res.pointsGained ?? res.xpGained ?? 50;
       toast.success(res.message || `¡Módulo completado con éxito! (+${gained} pts de progreso)`);

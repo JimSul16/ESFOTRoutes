@@ -422,9 +422,11 @@ export const generateAndPersistAdaptiveRoute = async ({ userId, subjectId, autho
   let createdRouteId = null;
 
   try {
-    await turso.execute({
+    // Privada (`isPublic = 0`): la ruta es del estudiante que hizo el
+    // autodiagnóstico. Con `1` aparecía en el catálogo de todos los alumnos.
+    const routeInsert = await turso.execute({
       sql: `INSERT INTO LearningRoute (title, description, category, subjectId, estimatedTime, difficulty, evaluationRules, authorId, isPublic)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       args: [
         routeTitle,
         routeDescription,
@@ -449,11 +451,7 @@ export const generateAndPersistAdaptiveRoute = async ({ userId, subjectId, autho
       ]
     });
 
-    const routeResult = await turso.execute({
-      sql: `SELECT id FROM LearningRoute WHERE authorId = ? ORDER BY id DESC LIMIT 1`,
-      args: [authorId || userId]
-    });
-    createdRouteId = routeResult.rows[0].id;
+    createdRouteId = Number(routeInsert.lastInsertRowid);
 
     // Insertar módulos en Turso y asociar recursos + evaluaciones precargadas
     for (const mod of adaptivePlan.structuredModules) {

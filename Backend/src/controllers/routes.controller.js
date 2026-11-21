@@ -3,6 +3,8 @@ import { syncRouteToGraph, deleteRouteFromGraph, markModuleAsCompleted, markModu
 import { syncEnrollmentToGraph } from '../services/knowledgeGraph.service.js';
 import { executeWithGeminiCascade } from '../services/chat.service.js';
 import { parseId } from '../utils/index.js';
+import { assertRouteAccess, sendAccessError } from '../services/routeAccess.service.js';
+import { getRouteProgress, syncEnrollmentProgress } from '../services/routeProgress.service.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -39,31 +41,9 @@ const inferSubjectId = (category) => {
 };
 
 /**
- * Calcula el avance de un usuario sobre una ruta: módulos superados sobre
- * módulos totales, en porcentaje entero (0 si la ruta no tiene módulos).
- *
- * Se apoya en `ModuleProgress.isPassed`, que es lo que escribe
- * `completeModule` cuando el alumno aprueba la evaluación.
- */
-const getRouteProgress = async (userId, routeId) => {
-  const result = await turso.execute({
-    sql: `SELECT
-            (SELECT COUNT(*) FROM Module WHERE routeId = ?) AS totalModules,
-            (SELECT COUNT(*) FROM ModuleProgress mp
-               JOIN Module m ON m.id = mp.moduleId
-              WHERE mp.userId = ? AND m.routeId = ? AND mp.isPassed = 1) AS completedModules`,
-    args: [routeId, userId, routeId]
-  });
-
-  const { totalModules, completedModules } = result.rows[0] || {};
-
-  if (!totalModules) return 0;
-  return Math.round((completedModules / totalModules) * 100);
-};
-
-/**
  * Construye el objeto completo de una ruta con sus módulos y recursos.
- * Si se pasa userId, incluye el estado de completitud (isPassed, score) de cada módulo.
+ * Si se pasa userId, incluye el estado de completitud de cada módulo
+ * (isPassed, passedTheory, passedPractice, score) y `openedResourceIds`.
  */
 const buildFullRoute = async (routeId, userId = null) => {
   const routeResult = await turso.execute({
@@ -80,36 +60,67 @@ const buildFullRoute = async (routeId, userId = null) => {
   });
 
   let progressMap = {};
+  let openedResourceIds = [];
   if (userId) {
     const progressResult = await turso.execute({
-      sql: `SELECT mp.moduleId, mp.isPassed, mp.score 
-            FROM ModuleProgress mp 
-            JOIN Module m ON m.id = mp.moduleId 
+      sql: `SELECT mp.moduleId, mp.isPassed, mp.passedTheory, mp.passedPractice, mp.score
+            FROM ModuleProgress mp
+            JOIN Module m ON m.id = mp.moduleId
             WHERE mp.userId = ? AND m.routeId = ?`,
       args: [userId, routeId]
     });
     for (const row of progressResult.rows) {
-      progressMap[row.moduleId] = { isPassed: Boolean(row.isPassed), score: row.score };
+      progressMap[row.moduleId] = {
+        isPassed: Boolean(row.isPassed),
+        passedTheory: Boolean(row.passedTheory),
+        passedPractice: Boolean(row.passedPractice),
+        score: row.score
+      };
     }
+
+    const openedResult = await turso.execute({
+      sql: `SELECT DISTINCT ra.resourceId
+            FROM ResourceAccess ra
+            JOIN ModuleResource mr ON mr.resourceId = ra.resourceId
+            JOIN Module m ON m.id = mr.moduleId
+            WHERE ra.userId = ? AND m.routeId = ?`,
+      args: [userId, routeId]
+    });
+    openedResourceIds = openedResult.rows.map((r) => String(r.resourceId));
   }
 
-  const modules = await Promise.all(modulesResult.rows.map(async (mod) => {
-    const resourcesResult = await turso.execute({
-      sql: `SELECT mr.position, r.* FROM ModuleResource mr
-            JOIN Resource r ON r.id = mr.resourceId
-            WHERE mr.moduleId = ? ORDER BY mr.position ASC`,
-      args: [mod.id]
-    });
-    const modProgress = progressMap[mod.id] || { isPassed: false, score: null };
-    return { 
-      ...mod, 
-      isPassed: modProgress.isPassed,
-      score: modProgress.score,
-      resources: resourcesResult.rows 
-    };
-  }));
+  // Una sola consulta de recursos para toda la ruta (antes: una por módulo).
+  const resourcesResult = await turso.execute({
+    sql: `SELECT mr.moduleId AS _moduleId, mr.position, r.* FROM ModuleResource mr
+          JOIN Resource r ON r.id = mr.resourceId
+          JOIN Module m ON m.id = mr.moduleId
+          WHERE m.routeId = ? ORDER BY mr.position ASC`,
+    args: [routeId]
+  });
+  const resourcesByModule = {};
+  for (const { _moduleId, ...resource } of resourcesResult.rows) {
+    (resourcesByModule[_moduleId] ||= []).push(resource);
+  }
 
-  return { ...route, modules };
+  const modules = modulesResult.rows.map((mod) => {
+    const modProgress = progressMap[mod.id] || {
+      isPassed: false, passedTheory: false, passedPractice: false, score: null
+    };
+    return {
+      ...mod,
+      isPassed: modProgress.isPassed,
+      passedTheory: modProgress.passedTheory,
+      passedPractice: modProgress.passedPractice,
+      score: modProgress.score,
+      resources: resourcesByModule[mod.id] || []
+    };
+  });
+
+  return {
+    ...route,
+    modules,
+    ...(userId !== null ? { openedResourceIds } : {})
+  };
 };
 
 // ─── Controladores ────────────────────────────────────────────────────────────
@@ -121,7 +132,9 @@ export const createRoute = async (req, res) => {
 
     if (!title) return res.status(400).json({ error: 'El título es obligatorio.' });
 
-    await turso.execute({
+    // `lastInsertRowid` en vez de `SELECT ... ORDER BY id DESC LIMIT 1`: la
+    // relectura devolvía el id equivocado con dos peticiones simultáneas.
+    const routeInsert = await turso.execute({
       sql: `INSERT INTO LearningRoute (title, description, category, subjectId, imageUrl, estimatedTime, difficulty, evaluationRules, authorId, isPublic)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       args: [title, description || null, category || null,
@@ -130,26 +143,16 @@ export const createRoute = async (req, res) => {
              estimatedTime ? parseInt(estimatedTime) : null,
              difficulty || 'BEGINNER', evaluationRules || null, authorId]
     });
-
-    const routeResult = await turso.execute({
-      sql: `SELECT id FROM LearningRoute WHERE authorId = ? ORDER BY id DESC LIMIT 1`,
-      args: [authorId]
-    });
-    const routeId = routeResult.rows[0].id;
+    const routeId = Number(routeInsert.lastInsertRowid);
 
     if (modules?.length) {
       for (let i = 0; i < modules.length; i++) {
         const mod = modules[i];
-        await turso.execute({
+        const modInsert = await turso.execute({
           sql: `INSERT INTO Module (title, description, position, routeId) VALUES (?, ?, ?, ?)`,
           args: [mod.title, mod.description || null, i + 1, routeId]
         });
-
-        const modResult = await turso.execute({
-          sql: `SELECT id FROM Module WHERE routeId = ? ORDER BY id DESC LIMIT 1`,
-          args: [routeId]
-        });
-        const moduleId = modResult.rows[0].id;
+        const moduleId = Number(modInsert.lastInsertRowid);
 
         if (mod.resourceIds?.length) {
           for (let j = 0; j < mod.resourceIds.length; j++) {
@@ -191,15 +194,27 @@ export const getRoutes = async (req, res) => {
 
 export const getRouteById = async (req, res) => {
   try {
-    const userId = req.user?.id || null;
+    const userId = req.user.id;
     const routeId = parseRouteId(req.params.id);
     if (routeId === null) {
       return res.status(400).json({ error: 'El identificador de la ruta no es válido.' });
     }
+
+    // Antes no había ningún chequeo: cualquier estudiante leía la ruta
+    // privada de otro (módulos, recursos y `evaluationRules`) por su id.
+    const access = await assertRouteAccess(userId, routeId);
+
     const route = await buildFullRoute(routeId, userId);
     if (!route) return res.status(404).json({ error: 'Ruta no encontrada' });
+
+    // `progress` solo tiene sentido para quien está inscrito; sin él, el
+    // detalle del frontend perdía el valor que traía de `my-routes`.
+    if (access.isEnrolled) {
+      route.progress = await getRouteProgress(userId, routeId);
+    }
     return res.json(route);
   } catch (error) {
+    if (sendAccessError(res, error)) return;
     console.error('Error en getRouteById:', error);
     return res.status(500).json({ error: 'Error del servidor al obtener la ruta' });
   }
@@ -397,57 +412,53 @@ export const generatePersonalizedRoute = async (req, res) => {
       return JSON.parse(aiResponse);
     });
 
-    // Insertar Ruta
-    // `subjectId` es opcional: si no viene, se deduce de `category`.
-    await turso.execute({
+    // Insertar Ruta (privada: solo la ve su autor)
+    // `subjectId` es opcional: si no viene, se deduce de la categoría que
+    // devuelva la IA. Antes se leía una variable `category` inexistente en
+    // este ámbito: ReferenceError (500) si no llegaba `subjectId`.
+    const routeInsert = await turso.execute({
       sql: `INSERT INTO LearningRoute (title, description, category, subjectId, difficulty, evaluationRules, authorId, isPublic)
             VALUES (?, ?, 'Generada por IA', ?, ?, ?, ?, 0)`,
       args: [parsedData.title, parsedData.description,
-             subjectId || inferSubjectId(parsedData.category ?? category),
+             subjectId || inferSubjectId(parsedData.category),
              difficulty || 'INTERMEDIATE', parsedData.evaluationRules, authorId]
     });
-
-    const routeResult = await turso.execute({
-      sql: `SELECT id FROM LearningRoute WHERE authorId = ? ORDER BY id DESC LIMIT 1`,
-      args: [authorId]
-    });
-    const routeId = routeResult.rows[0].id;
+    const routeId = Number(routeInsert.lastInsertRowid);
 
     // Insertar módulos y recursos
     for (let i = 0; i < parsedData.modules.length; i++) {
       const mod = parsedData.modules[i];
-      await turso.execute({
+      const modInsert = await turso.execute({
         sql: `INSERT INTO Module (title, description, position, routeId) VALUES (?, ?, ?, ?)`,
         args: [mod.title, mod.description || null, i + 1, routeId]
       });
-
-      const modResult = await turso.execute({
-        sql: `SELECT id FROM Module WHERE routeId = ? ORDER BY id DESC LIMIT 1`,
-        args: [routeId]
-      });
-      const moduleId = modResult.rows[0].id;
+      const moduleId = Number(modInsert.lastInsertRowid);
 
       if (mod.resources?.length) {
         for (let j = 0; j < mod.resources.length; j++) {
           const res = mod.resources[j];
-          await turso.execute({
+          const resInsert = await turso.execute({
             sql: `INSERT INTO Resource (title, url, type, authorId) VALUES (?, ?, ?, ?)`,
             args: [res.title, res.url, res.type || 'LINK', authorId]
           });
-          const resResult = await turso.execute({
-            sql: `SELECT id FROM Resource WHERE url = ? AND authorId = ? ORDER BY id DESC LIMIT 1`,
-            args: [res.url, authorId]
-          });
           await turso.execute({
             sql: `INSERT OR IGNORE INTO ModuleResource (moduleId, resourceId, position) VALUES (?, ?, ?)`,
-            args: [moduleId, resResult.rows[0].id, j + 1]
+            args: [moduleId, Number(resInsert.lastInsertRowid), j + 1]
           });
         }
       }
     }
 
+    // Matrícula automática: sin ella el autor veía la ruta en "Mis Rutas"
+    // pero `completeModule` le respondía 403 (no inscrito).
+    await turso.execute({
+      sql: `INSERT OR IGNORE INTO Enrollment (userId, learningRouteId, progress) VALUES (?, ?, 0)`,
+      args: [authorId, routeId]
+    });
+
     const fullRoute = await buildFullRoute(routeId);
     await syncRouteToGraph(routeId, parsedData.title, 'Generada por IA', fullRoute?.modules || []);
+    await syncEnrollmentToGraph(authorId, routeId);
 
     return res.status(201).json({ message: 'Ruta IA generada exitosamente', route: fullRoute });
   } catch (error) {
@@ -575,9 +586,33 @@ export const enrollRoute = async (req, res) => {
   }
 };
 
+/** Respuesta "sin cambios" con todos los alias (RR-004). */
+const unchangedProgressResponse = async (userId, routeId, extra) => {
+  const progress = await getRouteProgress(userId, routeId);
+  const currentUser = await turso.execute({
+    sql: `SELECT xp, level FROM User WHERE id = ?`,
+    args: [userId]
+  });
+  const totalXp    = currentUser.rows[0]?.xp || 0;
+  const totalLevel = currentUser.rows[0]?.level || Math.floor(totalXp / 1000) + 1;
+  return {
+    progress,
+    xpGained: 0,
+    newTotalXp: totalXp,
+    newLevel: totalLevel,
+    // Alias en español: el frontend renombra "XP" → "progreso" (RR-004).
+    pointsGained: 0,
+    newTotalProgress: totalXp,
+    newProgressLevel: totalLevel,
+    ...extra
+  };
+};
+
+const ASSESSMENT_TYPES = ['teoria', 'completa', 'practica'];
+
 export const completeModule = async (req, res) => {
   try {
-    const { moduleId, score, passed } = req.body;
+    const { moduleId, score, passed, assessmentType = 'teoria' } = req.body;
     const userId = req.user.id;
     const modId  = parseInt(moduleId, 10);
 
@@ -587,9 +622,17 @@ export const completeModule = async (req, res) => {
       return res.status(400).json({ error: 'El identificador del módulo no es válido.' });
     }
 
-    // Obtener routeId y title del módulo
+    if (!ASSESSMENT_TYPES.includes(assessmentType)) {
+      return res.status(400).json({
+        error: 'El tipo de evaluación no es válido. Use "teoria", "completa" o "practica".'
+      });
+    }
+
+    // Obtener routeId, title y si es el último módulo de la ruta
     const moduleData = await turso.execute({
-      sql: `SELECT routeId, title FROM Module WHERE id = ?`,
+      sql: `SELECT m.routeId, m.title,
+                   m.position = (SELECT MAX(position) FROM Module WHERE routeId = m.routeId) AS isLast
+            FROM Module m WHERE m.id = ?`,
       args: [modId]
     });
     if (!moduleData.rows.length) {
@@ -597,6 +640,7 @@ export const completeModule = async (req, res) => {
     }
     const routeId = moduleData.rows[0].routeId;
     const moduleTitle = moduleData.rows[0].title;
+    const isLastModule = Boolean(moduleData.rows[0].isLast);
 
     // ── Autorización: el alumno debe estar inscrito en la ruta ─────────────
     // Antes no se comprobaba: cualquier STUDENT autenticado podía aprobar
@@ -613,80 +657,103 @@ export const completeModule = async (req, res) => {
       });
     }
 
-    // ── Un módulo ya aprobado no se puede volver a reprobar ───────────────
-    // Antes la comprobación estaba DESPUÉS de la rama de suspenso: un alumno
-    // que ya había aprobado podía reenviar `passed: false` y se registraba
-    // la dificultad, dejando el `Topic` con `COMPLETED` y `STRUGGLES_WITH`
-    // a la vez (el tema ya superado acababa marcado como "⚡ Refuerzo").
+    // El reto final solo existe en el último módulo: el cálculo de progreso
+    // cuenta un único reto (N cuestionarios + 1), así que aceptarlo en otros
+    // módulos inflaba el avance.
+    if (assessmentType === 'completa' && !isLastModule) {
+      return res.status(400).json({ error: 'El reto final solo está disponible en el último módulo de la ruta.' });
+    }
+
     const existingProgress = await turso.execute({
-      sql: `SELECT id FROM ModuleProgress WHERE userId = ? AND moduleId = ?`,
+      sql: `SELECT id, isPassed, passedTheory, passedPractice FROM ModuleProgress
+            WHERE userId = ? AND moduleId = ?`,
       args: [userId, modId]
     });
+    const existing = existingProgress.rows[0];
+    const moduleAlreadyPassed = Boolean(existing?.isPassed);
 
-    if (existingProgress.rows.length) {
-      const alreadyProgress = await getRouteProgress(userId, routeId);
-      // Mismo contrato de campos que una completación fresca: aquí no se
-      // otorga progreso nuevo (0), pero se devuelven todos los alias (RR-004)
-      // para que el frontend reciba siempre la misma forma de respuesta.
-      const currentUser = await turso.execute({
-        sql: `SELECT xp, level FROM User WHERE id = ?`,
-        args: [userId]
-      });
-      const totalXp    = currentUser.rows[0]?.xp || 0;
-      const totalLevel = currentUser.rows[0]?.level || Math.floor(totalXp / 1000) + 1;
-      return res.status(200).json({
-        message: 'Módulo ya completado anteriormente.',
-        passed: true,
-        progress: alreadyProgress,
-        xpGained: 0,
-        newTotalXp: totalXp,
-        newLevel: totalLevel,
-        // Alias en español: el frontend renombra "XP" → "progreso" (RR-004).
-        pointsGained: 0,
-        newTotalProgress: totalXp,
-        newProgressLevel: totalLevel
-      });
+    // La práctica es formativa: se acepta (el cliente la tiene tipada) pero
+    // no suma progreso ni XP.
+    if (assessmentType === 'practica') {
+      return res.status(200).json(await unchangedProgressResponse(userId, routeId, {
+        message: 'La práctica es formativa: no suma al progreso de la ruta.',
+        assessmentType,
+        passed: Boolean(passed)
+      }));
+    }
+
+    // ── Una evaluación ya aprobada no se vuelve a contar ──────────────────
+    // La guarda es por tipo: aprobar el cuestionario no bloquea el reto final.
+    // Una fila previa a los flags (`isPassed` sin ningún tipo) cuenta como
+    // cuestionario aprobado, igual que el backfill de `migrate.js`.
+    const legacyTheory = moduleAlreadyPassed && !existing.passedTheory && !existing.passedPractice;
+    const alreadyPassedThisType = existing && (
+      (assessmentType === 'teoria'   && (Boolean(existing.passedTheory) || legacyTheory)) ||
+      (assessmentType === 'completa' && Boolean(existing.passedPractice))
+    );
+
+    if (alreadyPassedThisType) {
+      return res.status(200).json(await unchangedProgressResponse(userId, routeId, {
+        message: 'Esta evaluación ya fue aprobada anteriormente.',
+        assessmentType,
+        passed: true
+      }));
     }
 
     if (!passed || (score !== undefined && score < 70)) {
-      await markModuleStruggle(userId, routeId, moduleTitle, score || 0, 'Reprobó examen de módulo');
+      // Un módulo ya aprobado no se marca como dificultad: antes eso dejaba
+      // el `Topic` con `COMPLETED` y `STRUGGLES_WITH` a la vez (el tema
+      // superado acababa marcado como "⚡ Refuerzo").
+      if (!moduleAlreadyPassed) {
+        await markModuleStruggle(userId, routeId, moduleTitle, score || 0, 'Reprobó evaluación de módulo');
+      }
       return res.status(200).json({
         message: 'Progreso registrado. Sigue practicando para aprobar el módulo. Se reforzarán estos conceptos.',
+        assessmentType,
         passed: false,
         score: score || 0,
         progress: await getRouteProgress(userId, routeId),
       });
     }
 
-    await turso.execute({
-      sql: `INSERT INTO ModuleProgress (userId, moduleId, isPassed, score) VALUES (?, ?, 1, ?)`,
-      args: [userId, modId, score || 100]
-    });
+    // Progreso + XP en un solo lote atómico: antes eran escrituras sueltas y
+    // un fallo a mitad dejaba el progreso guardado sin la XP (o al revés).
+    const isTheory   = assessmentType === 'teoria'   ? 1 : 0;
+    const isPractice = assessmentType === 'completa' ? 1 : 0;
+    await turso.batch([
+      {
+        sql: `INSERT INTO ModuleProgress (userId, moduleId, isPassed, passedTheory, passedPractice, score)
+              VALUES (?, ?, 1, ?, ?, ?)
+              ON CONFLICT(userId, moduleId) DO UPDATE SET
+                isPassed       = 1,
+                passedTheory   = MAX(passedTheory,   excluded.passedTheory),
+                passedPractice = MAX(passedPractice, excluded.passedPractice),
+                score          = MAX(COALESCE(score, 0), excluded.score)`,
+        args: [userId, modId, isTheory, isPractice, score || 100]
+      },
+      {
+        sql: `UPDATE User SET xp = xp + 50, level = ((xp + 50) / 1000) + 1 WHERE id = ?`,
+        args: [userId]
+      }
+    ], 'write');
 
-    // Guardar en el Grafo Neo4j
-    await markModuleAsCompleted(userId, routeId, moduleTitle, score || 100);
+    // Guardar en el Grafo Neo4j (solo la primera vez que se supera el módulo)
+    if (!moduleAlreadyPassed) {
+      await markModuleAsCompleted(userId, routeId, moduleTitle, score || 100);
+    }
 
-    // Calcular progreso con el mismo helper que usa `GET /routes/my-routes`,
-    // para que el valor guardado y el devuelto nunca divergan.
-    const progress = await getRouteProgress(userId, routeId);
+    // Mismo helper que `GET /routes/my-routes`: el valor guardado y el
+    // devuelto nunca divergen.
+    const [{ progress }] = await syncEnrollmentProgress(userId, [routeId]);
 
-    await turso.execute({
-      sql: `UPDATE Enrollment SET progress = ? WHERE userId = ? AND learningRouteId = ?`,
-      args: [progress, userId, routeId]
-    });
-
-    // Actualizar XP y Nivel
-    const userResult = await turso.execute({ sql: `SELECT xp FROM User WHERE id = ?`, args: [userId] });
-    const newXp      = (userResult.rows[0].xp || 0) + 50;
-    const newLevel   = Math.floor(newXp / 1000) + 1;
-
-    await turso.execute({
-      sql: `UPDATE User SET xp = ?, level = ? WHERE id = ?`,
-      args: [newXp, newLevel, userId]
-    });
+    const userResult = await turso.execute({ sql: `SELECT xp, level FROM User WHERE id = ?`, args: [userId] });
+    const newXp    = Number(userResult.rows[0]?.xp || 0);
+    const newLevel = Number(userResult.rows[0]?.level || 1);
 
     return res.status(200).json({
-      message: 'Módulo completado con éxito.',
+      message: assessmentType === 'completa' ? 'Reto final aprobado con éxito.' : 'Módulo completado con éxito.',
+      assessmentType,
+      passed: true,
       progress,
       xpGained: 50,
       newTotalXp: newXp,
@@ -728,6 +795,10 @@ export const getModuleAssessments = async (req, res) => {
       return res.status(404).json({ error: 'Módulo no encontrado.' });
     }
 
+    // Los exámenes incluyen la clave de respuestas: solo para quien puede
+    // ver la ruta (antes se listaban los de cualquier ruta privada).
+    await assertRouteAccess(req.user.id, moduleData.rows[0].routeId);
+
     const result = await turso.execute({
       sql: `SELECT id, moduleId, type, content, createdAt, updatedAt
             FROM ModuleAssessment WHERE moduleId = ?
@@ -751,7 +822,70 @@ export const getModuleAssessments = async (req, res) => {
       total: assessments.length
     });
   } catch (error) {
+    if (sendAccessError(res, error)) return;
     console.error('Error en getModuleAssessments:', error);
     return res.status(500).json({ error: 'Error al obtener las evaluaciones del módulo.' });
+  }
+};
+
+/**
+ * Registra que el alumno abrió un recurso.
+ * POST /api/routes/resources/:id/open
+ *
+ * Idempotente (`INSERT OR IGNORE`): el mismo recurso no suma dos veces. Solo
+ * se aceptan recursos de rutas en las que el alumno está inscrito. Como el
+ * progreso ahora depende de los recursos abiertos, se recalcula el valor
+ * cacheado en `Enrollment.progress` (lo leen el perfil, el panel de admin y
+ * el prompt del tutor) y se devuelve para que el cliente no recalcule la
+ * fórmula.
+ *
+ * Un recurso compartido por varias rutas cuenta como abierto en todas.
+ */
+export const openResource = async (req, res) => {
+  try {
+    const userId     = req.user.id;
+    const resourceId = parseId(req.params.id);
+
+    if (resourceId === null) {
+      return res.status(400).json({ error: 'El identificador del recurso no es válido.' });
+    }
+
+    const routesResult = await turso.execute({
+      sql: `SELECT DISTINCT m.routeId
+            FROM ModuleResource mr
+            JOIN Module m ON m.id = mr.moduleId
+            JOIN Enrollment e ON e.learningRouteId = m.routeId AND e.userId = ?
+            WHERE mr.resourceId = ?`,
+      args: [userId, resourceId]
+    });
+
+    // Mismo 404 para "no existe" y "no está en tus rutas": no revela qué ids
+    // de recurso existen.
+    if (!routesResult.rows.length) {
+      return res.status(404).json({ error: 'Recurso no encontrado en tus rutas inscritas.' });
+    }
+
+    const insert = await turso.execute({
+      sql: `INSERT OR IGNORE INTO ResourceAccess (userId, resourceId) VALUES (?, ?)`,
+      args: [userId, resourceId]
+    });
+
+    const routeIds = routesResult.rows.map((r) => Number(r.routeId));
+    const progressByRoute = insert.rowsAffected > 0
+      ? await syncEnrollmentProgress(userId, routeIds)
+      : await Promise.all(routeIds.map(async (routeId) => ({
+          routeId,
+          progress: await getRouteProgress(userId, routeId)
+        })));
+
+    return res.status(200).json({
+      message: 'Recurso registrado como abierto.',
+      resourceId,
+      firstOpen: insert.rowsAffected > 0,
+      progressByRoute
+    });
+  } catch (error) {
+    console.error('Error en openResource:', error);
+    return res.status(500).json({ error: 'Error al registrar el recurso abierto.' });
   }
 };

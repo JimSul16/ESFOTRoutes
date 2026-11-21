@@ -159,7 +159,7 @@ describe('completeModule — exige inscripción en la ruta', () => {
 
     // Ni 400 ni "reprobado": el módulo ya estaba aprobado.
     expect(res.payload.passed).not.toBe(false);
-    expect(res.payload.message).toMatch(/ya completado/i);
+    expect(res.payload.message).toMatch(/ya fue aprobada/i);
   });
 });
 

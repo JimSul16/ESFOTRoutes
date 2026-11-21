@@ -1,4 +1,4 @@
-import { Button, Badge, Icon } from '@/components/ui';
+import { Button, Badge, Icon, ProgressBar } from '@/components/ui';
 import { getDifficultyMeta } from '@/utils/uiMaps';
 import type { LearningRoute } from '../../../../types';
 
@@ -11,6 +11,10 @@ export interface RouteHeaderProps {
 
 const RouteHeader = ({ route, isEnrolled, isEnrolling, onEnroll }: RouteHeaderProps) => {
   const diffMeta = getDifficultyMeta(route.difficulty);
+  // Rutas del autodiagnóstico o generadas con IA: solo las ve su autor.
+  // Antes se deducía del título ("adaptativa"/"personalizada") y fallaba con
+  // "Ruta Acelerada" o "Ruta Nivelatoria".
+  const isPersonal = route.isPublic === 0 || route.isPublic === false;
 
   return (
     <div className="relative overflow-hidden bg-white dark:bg-surface-900 border border-surface-200/80 dark:border-surface-800 rounded-3xl p-6 sm:p-8 shadow-sm">
@@ -26,10 +30,10 @@ const RouteHeader = ({ route, isEnrolled, isEnrolling, onEnroll }: RouteHeaderPr
             <Icon name="clock" className="h-3.5 w-3.5 text-surface-500" />
             {route.estimatedTime || 0} min estimados
           </Badge>
-          {(route.title?.toLowerCase().includes('personalizada') || route.title?.toLowerCase().includes('adaptativa')) && (
+          {isPersonal && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300 border border-brand-200/60 dark:border-brand-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-brand-600 animate-pulse" />
-              Ruta adaptativa
+              <Icon name="lock" className="h-3.5 w-3.5" />
+              Ruta personal · privada
             </span>
           )}
         </div>
@@ -41,6 +45,15 @@ const RouteHeader = ({ route, isEnrolled, isEnrolling, onEnroll }: RouteHeaderPr
         <p className="text-surface-600 dark:text-surface-300 text-sm sm:text-base leading-relaxed mb-6 max-w-3xl">
           {route.description}
         </p>
+
+        {isEnrolled && typeof route.progress === 'number' && (
+          <ProgressBar
+            value={route.progress}
+            label="Tu avance en la ruta"
+            showValue
+            className="mb-5 max-w-md"
+          />
+        )}
 
         <div className="flex items-center gap-4 pt-2">
           {!isEnrolled ? (

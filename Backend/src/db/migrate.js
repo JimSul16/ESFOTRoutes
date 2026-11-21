@@ -122,6 +122,39 @@ export const runMigrations = async () => {
       console.log("✅ Restricción CHECK de LearningRoute actualizada exitosamente a ('BEGINNER','INTERMEDIATE','ADVANCED','ADAPTIVE').");
     }
 
+    // ── ModuleProgress: aprobación por tipo de evaluación ───────────────────
+    // `UNIQUE(userId, moduleId)` impide una fila por tipo, así que el
+    // cuestionario (`teoria`) y el reto final (`completa`) son dos flags.
+    const mpInfo = await turso.execute('PRAGMA table_info(ModuleProgress)');
+    const mpColumns = mpInfo.rows.map(r => r.name);
+
+    for (const col of ['passedTheory', 'passedPractice']) {
+      if (!mpColumns.includes(col)) {
+        await turso.execute(`ALTER TABLE ModuleProgress ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`);
+        console.log(`➕ Columna agregada a ModuleProgress: ${col}`);
+      }
+    }
+
+    // Backfill: antes solo existía el cuestionario, así que una fila aprobada
+    // equivale a `passedTheory`.
+    await turso.execute(`
+      UPDATE ModuleProgress SET passedTheory = 1
+      WHERE isPassed = 1 AND passedTheory = 0 AND passedPractice = 0
+    `);
+
+    // ── Índices ─────────────────────────────────────────────────────────────
+    // El schema no tenía ninguno: los listados de chat y el cálculo de
+    // progreso hacían recorridos completos en cada petición.
+    const indexes = [
+      'CREATE INDEX IF NOT EXISTS idx_route_author_public ON LearningRoute(authorId, isPublic)',
+      'CREATE INDEX IF NOT EXISTS idx_module_resource_resource ON ModuleResource(resourceId)',
+      'CREATE INDEX IF NOT EXISTS idx_chat_session_user_updated ON ChatSession(userId, updatedAt DESC)',
+      'CREATE INDEX IF NOT EXISTS idx_chat_message_session ON ChatMessage(sessionId, id)',
+    ];
+    for (const stmt of indexes) {
+      await turso.execute(stmt);
+    }
+
     console.log('✅ Migración completada: todas las tablas y columnas existen en Turso.');
   } catch (error) {
     console.error('❌ Error en migración:', error.message);

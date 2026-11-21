@@ -9,7 +9,8 @@ import {
   getMyRoutes,
   enrollRoute,
   completeModule,
-  getModuleAssessments
+  getModuleAssessments,
+  openResource
 } from '../controllers/routes.controller.js';
 import { verifyToken, checkRoles } from '../middlewares/auth.middleware.js';
 import { handleUploadError, uploadMaterial } from '../middlewares/upload.middleware.js';
@@ -23,6 +24,9 @@ router.post('/complete-module', verifyToken, checkRoles(['STUDENT']), completeMo
 
 // RR-008: evaluaciones generadas de un módulo (listado).
 // `/:id` solo captura un segmento, así que esta ruta de 3 segmentos no choca.
+// Recurso abierto por el alumno (progreso 60/40). 3 segmentos: no choca con `/:id`.
+router.post('/resources/:id/open', verifyToken, checkRoles(['STUDENT']), openResource);
+
 router.get('/modules/:moduleId/assessments', verifyToken, checkRoles(['ADMIN', 'STUDENT']), getModuleAssessments);
 
 router.post('/', verifyToken, checkRoles(['ADMIN']), createRoute);

@@ -168,11 +168,24 @@ CREATE TABLE IF NOT EXISTS ModuleProgress (
   userId      INTEGER NOT NULL,
   moduleId    INTEGER NOT NULL,
   isPassed    INTEGER NOT NULL DEFAULT 0,
+  passedTheory   INTEGER NOT NULL DEFAULT 0, -- cuestionario teórico aprobado
+  passedPractice INTEGER NOT NULL DEFAULT 0, -- reto final aprobado (último módulo)
   score       INTEGER,
   completedAt TEXT    NOT NULL DEFAULT (datetime('now')),
   UNIQUE(userId, moduleId),
   FOREIGN KEY (userId)   REFERENCES User(id)   ON DELETE CASCADE,
   FOREIGN KEY (moduleId) REFERENCES Module(id) ON DELETE CASCADE
+);
+
+-- ─── RECURSOS ABIERTOS ───────────────────────────────────────────
+-- Un usuario no acumula varias filas por recurso (INSERT OR IGNORE).
+CREATE TABLE IF NOT EXISTS ResourceAccess (
+  userId     INTEGER NOT NULL,
+  resourceId INTEGER NOT NULL,
+  openedAt   TEXT    NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (userId, resourceId),
+  FOREIGN KEY (userId)     REFERENCES User(id)     ON DELETE CASCADE,
+  FOREIGN KEY (resourceId) REFERENCES Resource(id) ON DELETE CASCADE
 );
 
 -- ─── REGISTRO DE AUDITORÍA DE SESIONES ────────────────────────────

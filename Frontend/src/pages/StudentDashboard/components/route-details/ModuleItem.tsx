@@ -18,6 +18,10 @@ export interface ModuleItemProps {
   onAskTutor?: (moduleId: string, moduleTitle: string) => void;
   /** Abre el modal con el historial de evaluaciones del módulo (RR-008). */
   onViewAssessments?: (moduleId: string, moduleTitle: string) => void;
+  /** Ids de recursos que el alumno ya abrió. */
+  openedResourceIds?: ReadonlySet<string>;
+  /** Registra la apertura de un recurso (progreso de la ruta). */
+  onOpenResource?: (resourceId: string) => void;
 }
 
 const ModuleItem = ({
@@ -31,6 +35,8 @@ const ModuleItem = ({
   loadingType,
   onAskTutor,
   onViewAssessments,
+  openedResourceIds,
+  onOpenResource,
 }: ModuleItemProps) => {
   const panelId = useId();
   const tone = getModuleToneMeta(mod.title);
@@ -84,6 +90,13 @@ const ModuleItem = ({
                 Completado{mod.score != null ? ` · ${mod.score}%` : ''}
               </Badge>
             )}
+
+            {isLast && mod.passedPractice && (
+              <Badge variant="success" className="gap-1.5 font-semibold">
+                <Icon name="trophy" className="h-4 w-4" />
+                Reto final aprobado
+              </Badge>
+            )}
           </div>
 
           {/* Vista previa de la descripción (el texto completo se muestra al expandir). */}
@@ -131,7 +144,14 @@ const ModuleItem = ({
             {resources.length === 0 ? (
               <p className="text-sm italic text-surface-400">No hay recursos en este módulo.</p>
             ) : (
-              resources.map((res) => <ResourceCard key={res.id} resource={res} />)
+              resources.map((res) => (
+                <ResourceCard
+                  key={res.id}
+                  resource={res}
+                  opened={openedResourceIds?.has(res.id) ?? false}
+                  onOpen={onOpenResource}
+                />
+              ))
             )}
           </div>
 
@@ -171,7 +191,7 @@ const ModuleItem = ({
                 disabled={isGeneratingAssessment}
               >
                 {loadingType === 'completa' ? <Spinner size="sm" /> : null}
-                {loadingType === 'completa' ? 'Generando...' : 'Iniciar reto final'}
+                {loadingType === 'completa' ? 'Generando...' : mod.passedPractice ? 'Repetir reto final' : 'Iniciar reto final'}
               </Button>
             )}
           </div>

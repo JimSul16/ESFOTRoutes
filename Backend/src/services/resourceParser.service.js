@@ -1,9 +1,18 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { createRequire } from 'module';
+// pdf-parse 2.x exporta la clase `PDFParse`; la función por defecto de la 1.x
+// ya no existe y `require('pdf-parse')(buffer)` fallaba con "pdfParse is not a
+// function": ningún PDF llegaba al contexto del tutor ni de las evaluaciones.
+import { PDFParse } from 'pdf-parse';
 
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
+const extractPdfText = async (buffer) => {
+  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+  try {
+    return (await parser.getText()).text;
+  } finally {
+    await parser.destroy();
+  }
+};
 
 export const prepareResourceForGemini = async (resource) => {
   try {
@@ -44,8 +53,8 @@ export const prepareResourceForGemini = async (resource) => {
       const response = await fetch(resource.url, { signal: controller.signal });
       clearTimeout(timeoutId);
       const buffer = await response.arrayBuffer();
-      const data = await pdfParse(Buffer.from(buffer));
-      return `\n--- Documento PDF: ${resource.title} ---\n${data.text.substring(0, 150000)}\n`;
+      const text = await extractPdfText(buffer);
+      return `\n--- Documento PDF: ${resource.title} ---\n${text.substring(0, 150000)}\n`;
     }
 
     if (resource.type === 'IMAGE') {

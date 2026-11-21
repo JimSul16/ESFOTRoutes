@@ -143,11 +143,15 @@ const getStudentContextForPrompt = async (userId) => {
   }
 };
 
+/** Mensajes previos que se envían a Gemini como historial (≈10 turnos). */
+const CHAT_HISTORY_WINDOW = 20;
+
 /**
  * Procesa un mensaje de tutoría aplicando GraphRAG contextual
  */
 export const generateChatResponse = async ({ userId, moduleId, topicId, routeId, message, sessionId, user }) => {
   // 1. Obtener o crear sesión
+  const requestedModuleId = moduleId ? parseInt(moduleId, 10) : null;
   let session;
   if (sessionId) {
     const sResult = await turso.execute({
@@ -155,25 +159,49 @@ export const generateChatResponse = async ({ userId, moduleId, topicId, routeId,
       args: [parseInt(sessionId, 10), userId]
     });
     session = sResult.rows[0];
+
+    // Una sesión pertenece a un módulo: retomar la del módulo A con el
+    // módulo B activo mezclaba el historial de ambos en el prompt. En ese
+    // caso se abre una sesión nueva.
+    if (session && (session.moduleId ?? null) !== requestedModuleId) {
+      session = undefined;
+    }
   }
 
   if (!session) {
-    await turso.execute({
-      sql: `INSERT INTO ChatSession (userId, moduleId, title) VALUES (?, ?, 'Sesión de Tutoría IA')`,
-      args: [userId, moduleId ? parseInt(moduleId, 10) : null]
+    // Título legible para el historial (antes todas se llamaban igual).
+    let title = message.trim().replace(/\s+/g, ' ').slice(0, 60) || 'Sesión de Tutoría IA';
+    if (requestedModuleId) {
+      const mResult = await turso.execute({
+        sql: `SELECT title FROM Module WHERE id = ?`,
+        args: [requestedModuleId]
+      });
+      if (mResult.rows[0]?.title) title = mResult.rows[0].title;
+    }
+
+    const sInsert = await turso.execute({
+      sql: `INSERT INTO ChatSession (userId, moduleId, title) VALUES (?, ?, ?)`,
+      args: [userId, requestedModuleId, title]
     });
     const sResult = await turso.execute({
-      sql: `SELECT * FROM ChatSession WHERE userId = ? ORDER BY id DESC LIMIT 1`,
-      args: [userId]
+      sql: `SELECT * FROM ChatSession WHERE id = ?`,
+      args: [Number(sInsert.lastInsertRowid)]
     });
     session = sResult.rows[0];
   }
 
-  // 2. Guardar mensaje del estudiante en Turso
-  await turso.execute({
-    sql: `INSERT INTO ChatMessage (sessionId, sender, content) VALUES (?, 'STUDENT', ?)`,
-    args: [session.id, message]
-  });
+  // 2. Guardar mensaje del estudiante en Turso y marcar actividad de la
+  // sesión (`updatedAt` nunca cambiaba: el historial salía por creación).
+  await turso.batch([
+    {
+      sql: `INSERT INTO ChatMessage (sessionId, sender, content) VALUES (?, 'STUDENT', ?)`,
+      args: [session.id, message]
+    },
+    {
+      sql: `UPDATE ChatSession SET updatedAt = datetime('now') WHERE id = ?`,
+      args: [session.id]
+    }
+  ], 'write');
 
   // 3. Obtener contexto de material del módulo
   let moduleContext = 'Consulta general del estudiante.';
@@ -297,10 +325,15 @@ Indica al estudiante que el contexto curricular del grafo no está disponible en
     6. Si el mensaje indica "CONTEXTO DEL GRAFO DE CONOCIMIENTO NO DISPONIBLE", avísale al estudiante de forma breve que el contexto curricular no está disponible y continúa con el material del módulo si existe.
   `;
 
-  // 6. Cargar Historial
+  // 6. Cargar Historial (ventana de los últimos mensajes)
+  // Orden por `id`: `createdAt` tiene resolución de 1 s y el mensaje del
+  // alumno y la respuesta suelen compartirla. La ventana evita que una
+  // sesión retomada muchas veces haga crecer sin límite el prompt.
   const historyResult = await turso.execute({
-    sql: `SELECT * FROM ChatMessage WHERE sessionId = ? ORDER BY createdAt ASC`,
-    args: [session.id]
+    sql: `SELECT * FROM (
+            SELECT * FROM ChatMessage WHERE sessionId = ? ORDER BY id DESC LIMIT ?
+          ) ORDER BY id ASC`,
+    args: [session.id, CHAT_HISTORY_WINDOW + 1]
   });
 
   const history = historyResult.rows.slice(0, -1).map(msg => ({
@@ -326,14 +359,20 @@ Te sugiero repasar los recursos didácticos del módulo y verificar cada paso co
   }
 
   // 7. Guardar respuesta del Tutor IA
-  await turso.execute({
-    sql: `INSERT INTO ChatMessage (sessionId, sender, content) VALUES (?, 'AI', ?)`,
-    args: [session.id, aiResponseText]
-  });
+  const [aiInsert] = await turso.batch([
+    {
+      sql: `INSERT INTO ChatMessage (sessionId, sender, content) VALUES (?, 'AI', ?)`,
+      args: [session.id, aiResponseText]
+    },
+    {
+      sql: `UPDATE ChatSession SET updatedAt = datetime('now') WHERE id = ?`,
+      args: [session.id]
+    }
+  ], 'write');
 
   const aiMsgResult = await turso.execute({
-    sql: `SELECT * FROM ChatMessage WHERE sessionId = ? ORDER BY id DESC LIMIT 1`,
-    args: [session.id]
+    sql: `SELECT * FROM ChatMessage WHERE id = ?`,
+    args: [Number(aiInsert.lastInsertRowid)]
   });
 
   // 8. Detección automática de dificultades si el estudiante manifiesta bloqueo

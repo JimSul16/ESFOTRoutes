@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ToastContainer } from 'react-toastify';
-import { getRouteById, completeModule } from '../../../api/route.api';
+import { getRouteById, completeModule, openResource } from '../../../api/route.api';
 import { generateAssessment } from '../../../api/chat.api';
 import RouteDetails from './RouteDetails';
 import type { LearningRoute } from '../../../types';
@@ -10,6 +10,7 @@ vi.mock('../../../api/route.api', () => ({
   getRouteById: vi.fn(),
   enrollRoute: vi.fn(),
   completeModule: vi.fn(),
+  openResource: vi.fn(),
 }));
 
 vi.mock('../../../api/chat.api', () => ({ generateAssessment: vi.fn() }));
@@ -17,6 +18,7 @@ vi.mock('../../../api/chat.api', () => ({ generateAssessment: vi.fn() }));
 const mockGetRoute = vi.mocked(getRouteById);
 const mockComplete = vi.mocked(completeModule);
 const mockGenerate = vi.mocked(generateAssessment);
+const mockOpenResource = vi.mocked(openResource);
 
 /** La prop llega obsoleta a propósito: simula al padre tras aprobar un módulo. */
 const rutaProp = (): LearningRoute => ({
@@ -41,18 +43,18 @@ const rutaFresca = (): LearningRoute =>
     enrollments: [{ id: 'e-1', routeId: 'ruta-1', completedModules: [] }],
   }) as unknown as LearningRoute;
 
-const renderDetalle = (onAssessmentComplete = vi.fn()) =>
+const renderDetalle = (onAssessmentComplete = vi.fn(), { onBack = vi.fn(), route = rutaProp(), isAlreadyEnrolled = false } = {}) =>
   render(
     <>
       <ToastContainer />
       <RouteDetails
-        route={rutaProp()}
+        route={route}
         viewMode="teoria"
         setViewMode={vi.fn()}
-        onBack={vi.fn()}
+        onBack={onBack}
         contextoEvaluacion=""
         setContextoEvaluacion={vi.fn()}
-        isAlreadyEnrolled={false}
+        isAlreadyEnrolled={isAlreadyEnrolled}
         onAssessmentComplete={onAssessmentComplete}
       />
     </>
@@ -111,9 +113,70 @@ describe('RouteDetails — refresco de la ruta', () => {
     fireEvent.click(screen.getByRole('button', { name: /entregar evaluación/i }));
 
     await waitFor(() => expect(mockComplete).toHaveBeenCalled());
+    // Sin `assessmentType` el backend registraba el reto final como
+    // cuestionario y la ruta nunca llegaba al 100 %.
+    expect(mockComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ moduleId: 'mod-1', assessmentType: 'completa', passed: true })
+    );
     // El padre recibe el XP...
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
     // ...y la ruta se relee para que el progreso deje de estar obsoleto.
     await waitFor(() => expect(mockGetRoute).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('RouteDetails — aislamiento y recursos abiertos', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('si la ruta es privada de otro alumno (403) vuelve atrás en vez de mostrar datos viejos', async () => {
+    mockGetRoute.mockRejectedValue({ response: { status: 403, data: { error: 'No tienes acceso a esta ruta.' } } });
+    const onBack = vi.fn();
+    renderDetalle(vi.fn(), { onBack });
+
+    await waitFor(() => expect(onBack).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('No tienes acceso a esta ruta.')).toBeTruthy();
+  });
+
+  it('un error de red no expulsa al alumno del detalle', async () => {
+    mockGetRoute.mockRejectedValue(new Error('network'));
+    const onBack = vi.fn();
+    renderDetalle(vi.fn(), { onBack });
+
+    await waitFor(() => expect(mockGetRoute).toHaveBeenCalled());
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('abrir un recurso lo registra, lo marca como visto y actualiza el avance', async () => {
+    const conRecurso = {
+      ...rutaFresca(),
+      progress: 0,
+      openedResourceIds: [],
+      modules: [
+        {
+          id: 'mod-1',
+          title: 'Primer módulo',
+          resources: [{ id: 'res-9', title: 'Guía OSI', type: 'PDF', url: 'https://example.com/osi.pdf' }],
+        },
+      ],
+    } as unknown as LearningRoute;
+    mockGetRoute.mockResolvedValue(conRecurso);
+    mockOpenResource.mockResolvedValue({
+      message: 'ok', resourceId: 9, firstOpen: true, progressByRoute: [{ routeId: 'ruta-1' as unknown as number, progress: 60 }],
+    });
+
+    renderDetalle(vi.fn(), { route: conRecurso, isAlreadyEnrolled: true });
+    await waitFor(() => expect(mockGetRoute).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByText('Primer módulo'));
+    const link = screen.getByRole('link', { name: /abrir el recurso: guía osi/i });
+    fireEvent.click(link);
+
+    await waitFor(() => expect(mockOpenResource).toHaveBeenCalledWith('res-9'));
+    expect(await screen.findByText('Visto')).toBeTruthy();
+    expect(await screen.findByText('60%')).toBeTruthy();
+
+    // Un segundo clic no vuelve a registrar (ya está visto).
+    fireEvent.click(screen.getByRole('link', { name: /guía osi \(visto\)/i }));
+    expect(mockOpenResource).toHaveBeenCalledTimes(1);
   });
 });

@@ -97,12 +97,14 @@ describe('GET /routes/my-routes — progreso y enrollments', () => {
     expect(ruta.progress).toBe(0);
   });
 
-  test('el progreso sube según se aprueban módulos (0 → 25 → 50)', async () => {
+  // Ruta sin recursos: las evaluaciones valen el 100 % y hay 4 cuestionarios
+  // + 1 reto final = 5 evaluaciones (antes: módulos aprobados / 4).
+  test('el progreso sube según se aprueban cuestionarios (0 → 20 → 40)', async () => {
     await aprobarModulo(0);
-    expect((await miRuta()).progress).toBe(25);
+    expect((await miRuta()).progress).toBe(20);
 
     await aprobarModulo(1);
-    expect((await miRuta()).progress).toBe(50);
+    expect((await miRuta()).progress).toBe(40);
   });
 
   test('Enrollment.progress queda sincronizado con el valor devuelto', async () => {
@@ -119,7 +121,7 @@ describe('GET /routes/my-routes — progreso y enrollments', () => {
     const antes = (await miRuta()).progress;
     const res = await aprobarModulo(0);
 
-    expect(res.message).toMatch(/ya completado/i);
+    expect(res.message).toMatch(/ya fue aprobada/i);
     expect((await miRuta()).progress).toBe(antes);
   });
 

@@ -11,6 +11,8 @@ export interface ModuleListProps {
   /** Abre el tutor IA con el contexto del módulo (GraphRAG). */
   onAskTutor?: (moduleId: string, moduleTitle: string) => void;
   onViewAssessments?: (moduleId: string, moduleTitle: string) => void;
+  openedResourceIds?: ReadonlySet<string>;
+  onOpenResource?: (resourceId: string) => void;
 }
 
 const ModuleList = ({
@@ -22,6 +24,8 @@ const ModuleList = ({
   loadingType,
   onAskTutor,
   onViewAssessments,
+  openedResourceIds,
+  onOpenResource,
 }: ModuleListProps) => {
   if (!modules || modules.length === 0) {
     return (
@@ -46,6 +50,8 @@ const ModuleList = ({
           loadingType={loadingType}
           onAskTutor={onAskTutor}
           onViewAssessments={onViewAssessments}
+          openedResourceIds={openedResourceIds}
+          onOpenResource={onOpenResource}
         />
       ))}
     </div>
